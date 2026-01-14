@@ -35,6 +35,10 @@ export class Storage {
     return this.getProject(projectKey).branches;
   }
 
+  getAllProjects(): Record<string, Project> {
+    return this.data.projects;
+  }
+
   getBranch(projectKey: string, branchName: string): Branch | undefined {
     return this.getProject(projectKey).branches.find(b => b.name === branchName);
   }
