@@ -1,0 +1,29 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Development files
+.tsconfig.json
+.prettierignore
+.prettierrc
+.eslintrc.js
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Tests
+test/
+*.test.ts
+**/__tests__/
+
+# Other
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,56 @@
+{
+  "name": "@enmeen/branch-manager",
+  "version": "1.0.0",
+  "description": "A CLI tool to manage git branches with annotations",
+  "bin": {
+    "bm": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli.ts",
+    "watch": "tsc --watch",
+    "prepublishOnly": "pnpm run build"
+  },
+  "keywords": [
+    "git",
+    "branch",
+    "cli",
+    "manager",
+    "gitlab",
+    "branch-manager",
+    "workflow",
+    "productivity"
+  ],
+  "author": "desen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enmeen/branch-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/enmeen/branch-manager/issues"
+  },
+  "homepage": "https://github.com/enmeen/branch-manager#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "inquirer": "^8.2.5",
+    "fs-extra": "^11.2.0",
+    "open": "^8.4.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.10.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
