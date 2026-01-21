@@ -87,7 +87,7 @@ export class Storage {
     if (!project.buildUrls) {
       return undefined;
     }
-    return buildType === 'test' ? project.buildUrls.test : project.buildUrls.production;
+    return project.buildUrls[buildType];
   }
 
   async saveBuildUrl(projectKey: string, buildType: BuildType, url: string): Promise<void> {
@@ -97,11 +97,7 @@ export class Storage {
       project.buildUrls = {};
     }
 
-    if (buildType === 'test') {
-      project.buildUrls.test = url;
-    } else {
-      project.buildUrls.production = url;
-    }
+    project.buildUrls[buildType] = url;
 
     await this.save();
   }

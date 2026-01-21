@@ -90,6 +90,7 @@ export async function promptForBuildType(): Promise<BuildType> {
       message: '选择发布环境:',
       choices: [
         { name: BUILD_TYPE_LABELS.test, value: 'test' },
+        { name: BUILD_TYPE_LABELS.staging, value: 'staging' },
         { name: BUILD_TYPE_LABELS.production, value: 'production' }
       ]
     }

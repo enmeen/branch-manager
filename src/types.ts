@@ -1,6 +1,6 @@
 export type BranchStatus = 'developing' | 'testing' | 'completed' | 'pending-release' | 'on-hold' | 'abandoned';
 
-export type BuildType = 'test' | 'production';
+export type BuildType = 'test' | 'staging' | 'production';
 
 export interface Branch {
   name: string;
@@ -14,6 +14,7 @@ export interface Project {
   branches: Branch[];
   buildUrls?: {
     test?: string;
+    staging?: string;
     production?: string;
   };
 }
@@ -42,5 +43,6 @@ export const STATUS_COLORS: Record<BranchStatus, string> = {
 
 export const BUILD_TYPE_LABELS: Record<BuildType, string> = {
   'test': '发布测试',
+  'staging': '发布预发',
   'production': '发布线上'
 };
