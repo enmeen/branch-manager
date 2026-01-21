@@ -1,69 +1,55 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { Storage } from './storage';
+import { setConfig } from './commands/set';
 import { add } from './commands/add';
-import { list } from './commands/list';
-import { edit } from './commands/edit';
-import { remove } from './commands/remove';
-import { checkout } from './commands/checkout';
-import { build } from './commands/build';
+import { deploy } from './commands/deploy';
+import { info } from './commands/info';
 
 const program = new Command();
 const storage = new Storage();
 
 async function main() {
-  await storage.init();
+  try {
+    await storage.init();
+  } catch (error: any) {
+    console.error('初始化存储失败:', error.message);
+    console.error('请检查文件权限和磁盘空间');
+    console.error(`存储目录: ~/.bm`);
+    process.exit(1);
+  }
 
   program
     .name('bm')
-    .description('Git 分支管理工具 - 记录和管理分支信息')
-    .version('1.0.0');
+    .description('Branch Manager - 标准化并自动化需求分支管理、环境发布与状态追踪')
+    .version('2.0.0');
+
+  program
+    .command('set')
+    .description('配置仓库的环境分支和部署 URL（首次使用必须执行）')
+    .action(async () => {
+      await setConfig(storage);
+    });
 
   program
     .command('add')
-    .description('添加或更新当前分支记录')
-    .option('-m, --message <message>', '分支注释')
-    .option('-s, --status <status>', '分支状态 (developing/testing/completed/pending-release/on-hold/abandoned)')
-    .action(async (options) => {
-      await add(storage, options);
-    });
-
-  program
-    .command('list')
-    .description('查看所有分支记录')
-    .option('-s, --status <status>', '按状态筛选')
-    .action(async (options) => {
-      await list(storage, options);
-    });
-
-  program
-    .command('edit <branch-name>')
-    .description('编辑分支信息')
-    .option('-m, --message <message>', '新的分支注释')
-    .option('-s, --status <status>', '新的分支状态')
-    .action(async (branchName, options) => {
-      await edit(storage, branchName, options);
-    });
-
-  program
-    .command('remove <branch-name>')
-    .description('删除分支记录')
-    .action(async (branchName) => {
-      await remove(storage, branchName);
-    });
-
-  program
-    .command('checkout [branch-name]')
-    .description('切换到指定分支')
-    .action(async (branchName) => {
-      await checkout(storage, branchName);
+    .description('基于 prod 分支创建需求分支，并进入开发状态')
+    .action(async () => {
+      await add(storage);
     });
 
   program
     .command('deploy')
-    .description('打开部署发布页面')
+    .description('将当前需求分支发布到 test/pre/prod（merge + push + open url + 状态更新）')
     .action(async () => {
-      await build(storage);
+      await deploy(storage);
+    });
+
+  program
+    .command('info')
+    .description('查看当前仓库所有由 bm 管理的需求分支与状态信息')
+    .action(async () => {
+      await info(storage);
     });
 
   program.parse();

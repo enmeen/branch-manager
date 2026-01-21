@@ -2,222 +2,362 @@
 
 # Branch Manager (bm)
 
-**一个简单的 Git 分支管理 CLI 工具**
-
-记录和管理分支信息，特别适合多需求并行开发的场景
+**标准化并自动化需求分支管理、环境发布与状态追踪的 CLI 工具**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
+[![npm version](https://img.shields.io/npm/v/@enmeen/branch-manager)](https://www.npmjs.com/package/@enmeen/branch-manager)
 
 </div>
 
-## ✨ 功能特性
+## 功能特性
 
-- ✅ **添加/查看/编辑/删除** 分支记录
-- 🔄 **智能切换** 分支，自动处理未提交改动
-- 🚀 **快速部署** 打开部署页面，自动缓存部署地址
-- 🎯 **分支状态管理**（开发中、测试中、已完成、待发布等）
-- 🔍 **高亮显示** 当前所在分支
-- 💾 **全局存储**，按项目自动分组
-- 🎨 **交互式选择** 状态和注释
-- 🚀 **简单易用** 的命令行界面
+- 🌿 **统一分支管理** - 基于 prod 分支创建需求分支，或接管已有分支
+- 🚀 **标准化发布流程** - 自动化 merge + push + 打开部署页面 + 更新状态
+- 📊 **状态追踪** - 完整记录需求生命周期：开发中 → 已发布测试 → 已发布预发 → 已发布线上
+- 🔄 **智能工作流** - 支持创建新分支或管理现有分支，自动返回原分支
+- 💾 **项目隔离** - 自动识别 git 仓库，独立管理各项目数据
+- 🎨 **交互式界面** - 友好的命令行交互，减少误操作
 
-## 📸 预览
+## 安装
 
 ```bash
-$ bm list
+# 使用 npm 安装
+npm install -g @enmeen/branch-manager
 
-当前项目: gitlab.com/group/project
+# 或使用 pnpm 安装
+pnpm add -g @enmeen/branch-manager
 
-*  1 feature/login                   [开发中]  实现用户登录功能
-   2 feature/payment                 [测试中]  支付功能开发
-   3 bugfix/fix-crash                [已完成]  修复启动崩溃
+# 或使用 yarn 安装
+yarn global add @enmeen/branch-manager
 ```
 
-## 📦 安装
+## 快速开始
 
-### 方式一：从 GitHub 安装（推荐）
+### 1. 配置仓库（首次使用必须执行）
+
+在每个需要使用 `bm` 的仓库中，首先执行配置命令：
 
 ```bash
-# 克隆项目
-git clone https://github.com/your-username/branch-manager.git
-cd branch-manager
-
-# 安装依赖
-pnpm install
-
-# 编译项目
-pnpm run build
-
-# 创建全局链接
-npm link
+bm set
 ```
 
-### 方式二：使用 npm 全局安装
+**配置项：**
+- **测试环境**（可选）- 分支名 + 部署 URL
+- **预发环境**（可选）- 分支名 + 部署 URL
+- **生产环境**（必填）- 分支名 + 部署 URL
 
-```bash
-npm install -g branch-manager
+**示例配置：**
+```
+测试环境分支: test
+测试部署 URL: https://jenkins.example.com/job/test/build
+
+预发环境分支: pre
+预发部署 URL: https://jenkins.example.com/job/pre/build
+
+生产环境分支: main
+生产部署 URL: https://jenkins.example.com/job/prod/build
 ```
 
-## 🚀 使用方法
-
-### 添加分支记录
+### 2. 创建需求分支
 
 ```bash
-# 交互式添加（会提示输入注释和选择状态）
 bm add
-
-# 使用命令行参数快速添加
-bm add -m "实现用户登录功能" -s developing
 ```
 
-### 查看分支列表
+**两种模式：**
+
+#### 模式一：创建新分支
+- 从 prod 分支创建新的需求分支
+- 自动切换到新分支
+- 初始化状态为"开发中"
+
+#### 模式二：添加现有分支
+- 选择已存在的分支纳入管理
+- 自动切换到目标分支
+- 初始化状态为"开发中"
+
+### 3. 发布到环境
 
 ```bash
-# 查看所有分支
-bm list
-
-# 按状态筛选
-bm list --status developing
-```
-
-**输出说明：**
-- `*` 表示当前所在的分支
-- 当前分支会以粗体显示
-- 不同状态使用不同颜色标识
-
-### 编辑分支信息
-
-```bash
-# 交互式编辑（会提示输入新的注释和状态）
-bm edit feature/login
-
-# 使用命令行参数快速编辑
-bm edit feature/login -m "更新：支持第三方登录"
-bm edit feature/login -s completed
-```
-
-### 删除分支记录
-
-```bash
-# 删除分支记录（需要二次确认）
-bm remove feature/login
-```
-
-### 切换分支
-
-```bash
-# 交互式选择要切换的分支
-bm checkout
-
-# 直接指定分支名切换
-bm checkout feature/payment
-```
-
-**智能处理未提交的改动：**
-- ✅ 检测当前分支是否有未提交的改动
-- ✅ 提供 3 种处理方式：
-  - **自动提交**：创建临时提交（格式：`tmp: 切换分支前暂存修改 (2025/1/14 16:30:00)`）
-  - **手动提交**：暂停切换，让你自己提交
-  - **取消切换**：放弃本次操作
-
-### 部署发布
-
-```bash
-# 打开部署页面
 bm deploy
 ```
 
-**功能说明：**
-- 📋 **选择发布环境**：发布测试 / 发布线上
-- 🔗 **自动缓存地址**：首次输入后永久保存，下次自动使用
-- ⚠️ **二次确认**：发布线上前需要二次确认
-- 🌐 **自动打开浏览器**：直接跳转到部署页面
+**发布流程：**
+1. 选择发布环境（test/pre/prod）
+2. 切换到目标环境分支
+3. 拉取最新代码
+4. 合并当前需求分支
+5. 推送到远端
+6. 自动打开部署页面
+7. 确认发布完成
+8. 更新需求状态
+9. 可选：返回原开发分支
 
-**首次使用流程：**
-1. 执行 `bm deploy`
-2. 选择发布环境（发布测试/发布线上）
-3. 输入部署地址（如：`https://jenkins.gracelore.cc/job/h5-test/build`）
-4. 地址自动保存，下次直接使用
+**特性：**
+- ✅ 智能处理合并冲突
+- ✅ 线上发布需要二次确认
+- ✅ 支持冲突中止或继续
+- ✅ 发布完成后自动返回原分支
 
-**后续使用：**
-1. 执行 `bm deploy`
-2. 选择发布环境
-3. 自动打开浏览器跳转到部署页面
-
-## 📋 分支状态
-
-| 状态 | 说明 | 颜色 |
-|------|------|------|
-| `developing` | 开发中 | 🔵 蓝色 |
-| `testing` | 测试中 | 🟡 黄色 |
-| `completed` | 已完成 | 🟢 绿色 |
-| `pending-release` | 待发布 | 🟣 紫色 |
-| `on-hold` | 暂停 | ⚪ 灰色 |
-| `abandoned` | 已废弃 | 🔴 红色 |
-
-## 💾 数据存储
-
-- **存储位置**：`~/.branch-manager/data.json`
-- **项目识别**：通过 `git remote` 自动识别项目
-- **数据隔离**：每个项目的分支数据相互独立
-
-## 📖 命令参考
+### 4. 查看分支状态
 
 ```bash
-bm add [-m <message>] [-s <status>]
-  添加或更新当前分支记录
-
-  选项:
-    -m, --message <message>  分支注释
-    -s, --status <status>    分支状态
-
-bm list [-s <status>]
-  查看所有分支记录
-
-  选项:
-    -s, --status <status>    按状态筛选
-
-bm edit <branch-name> [-m <message>] [-s <status>]
-  编辑分支信息
-
-  选项:
-    -m, --message <message>  新的分支注释
-    -s, --status <status>    新的分支状态
-
-bm remove <branch-name>
-  删除分支记录
-
-bm checkout [branch-name]
-  切换到指定分支
-
-  参数:
-    branch-name              可选，分支名称。不指定则交互式选择
-
-  特性:
-    - 自动检测未提交的改动
-    - 支持自动创建临时 commit
-    - 支持手动提交后再切换
-
-bm deploy
-  打开部署发布页面
-
-  特性:
-    - 选择发布环境（测试/线上）
-    - 自动缓存部署地址
-    - 线上发布需要二次确认
-    - 自动打开浏览器
-
-bm --help
-  显示帮助信息
+bm info
 ```
 
-## 🛠️ 开发
+**显示信息：**
+- 所有被管理的需求分支
+- 当前分支状态
+- 关联的需求文档链接
+- 部署历史记录
+
+## 命令详解
+
+### `bm set`
+
+配置仓库的环境分支和部署 URL（首次使用必须执行）
+
+```bash
+bm set
+```
+
+**交互流程：**
+1. 展示当前配置（如果已配置）
+2. 询问是否更新配置
+3. 依次配置各环境（测试/预发可选，生产必填）
+4. 保存配置到 `~/.bm/config.json`
+
+### `bm add`
+
+基于 prod 分支创建需求分支，或添加现有分支到管理
+
+```bash
+bm add
+```
+
+**交互流程：**
+1. 选择模式：创建新分支 / 添加现有分支
+2. 输入或选择分支名
+3. 输入需求文档 URL（可选）
+4. 自动切换到目标分支
+5. 保存到 `~/.bm/state.json`
+
+**创建新分支模式：**
+- 检查分支是否已存在
+- 同步 prod 分支最新代码
+- 从 prod 创建新分支
+- 保存分支信息
+
+**添加现有分支模式：**
+- 列出所有本地需求分支（排除环境分支）
+- 选择要管理的分支
+- 保存分支信息
+
+### `bm deploy`
+
+将当前需求分支发布到指定环境
+
+```bash
+bm deploy
+```
+
+**发布步骤：**
+1. **检查环境** - 验证工作区干净、仓库已配置
+2. **选择环境** - 显示已配置的环境供选择
+3. **确认发布** - 生产环境需要二次确认
+4. **切换分支** - 切换到目标环境分支
+5. **拉取代码** - 确保目标分支是最新
+6. **合并分支** - 合并当前需求分支到目标分支
+7. **处理冲突** - 如有冲突，提供中止/继续选项
+8. **推送远端** - 推送合并后的代码
+9. **打开部署** - 自动在浏览器打开部署页面
+10. **确认完成** - 等待用户确认部署成功
+11. **更新状态** - 更新需求状态为对应环境的已发布
+12. **返回分支** - 可选择返回原开发分支
+
+**错误处理：**
+- 合并冲突时，提示手动解决并提供继续/中止选项
+- 状态更新失败时，记录警告但不影响发布结果
+- 任何步骤失败都会中止流程并提示
+
+### `bm info`
+
+查看当前仓库所有由 bm 管理的需求分支与状态信息
+
+```bash
+bm info
+```
+
+**显示内容：**
+- 仓库标识
+- 所有需求分支列表
+- 每个分支的：
+  - 分支名
+  - 当前状态
+  - 需求文档
+  - 部署历史
+- 当前所在分支高亮显示
+
+## 分支状态
+
+需求分支的状态会随发布自动更新：
+
+| 状态 | 说明 | 触发条件 |
+|------|------|----------|
+| `开发中` | 正在开发的分支 | 创建分支时 |
+| `已发布测试` | 已发布到测试环境 | 发布到 test 环境 |
+| `已发布预发` | 已发布到预发环境 | 发布到 pre 环境 |
+| `已发布线上` | 已发布到生产环境 | 发布到 prod 环境 |
+
+## 数据存储
+
+**存储位置：**
+- `~/.bm/config.json` - 仓库配置（环境分支、部署 URL）
+- `~/.bm/state.json` - 需求状态（分支信息、状态、历史）
+
+**项目识别：**
+- 通过 `git remote get-url origin` 自动识别仓库
+- 自动将不同仓库的数据隔离存储
+- 支持多种 URL 格式（HTTPS/SSH）
+
+**数据结构：**
+
+```json
+// config.json
+{
+  "gitlab.com/group/project": {
+    "branches": {
+      "test": "test",
+      "pre": "pre",
+      "prod": "main"
+    },
+    "deployUrls": {
+      "test": "https://jenkins.example.com/job/test/build",
+      "pre": "https://jenkins.example.com/job/pre/build",
+      "prod": "https://jenkins.example.com/job/prod/build"
+    }
+  }
+}
+
+// state.json
+{
+  "gitlab.com/group/project": {
+    "feature/login": {
+      "branch": "feature/login",
+      "doc": "https://example.com/docs/login",
+      "baseBranch": "main",
+      "status": "已发布测试",
+      "createdAt": 1737456000000,
+      "updatedAt": 1737542400000,
+      "deployHistory": [
+        {
+          "env": "test",
+          "timestamp": 1737542400000
+        }
+      ]
+    }
+  }
+}
+```
+
+## 工作流示例
+
+### 典型使用流程
+
+```bash
+# 1. 首次使用，配置仓库
+$ bm set
+# → 配置 test/pre/prod 环境分支和部署 URL
+
+# 2. 创建新需求分支
+$ bm add
+# → 选择"创建新分支"
+# → 输入分支名: feature/user-profile
+# → 输入需求文档: https://docs.example.com/user-profile
+# → 自动从 main 创建分支并切换
+
+# 3. 开发完成后，发布到测试环境
+$ bm deploy
+# → 选择环境: test
+# → 自动合并到 test 分支
+# → 自动打开部署页面
+# → 确认发布完成
+# → 状态更新为"已发布测试"
+# → 自动返回 feature/user-profile
+
+# 4. 测试通过后，发布到预发
+$ bm deploy
+# → 选择环境: pre
+# → 重复发布流程
+# → 状态更新为"已发布预发"
+
+# 5. 预发验证后，发布到生产
+$ bm deploy
+# → 选择环境: prod
+# → 二次确认发布
+# → 重复发布流程
+# → 状态更新为"已发布线上"
+
+# 6. 查看所有需求状态
+$ bm info
+# → 显示所有管理的分支及其状态
+```
+
+### 接管已有分支
+
+```bash
+# 如果你已经手动创建了分支
+$ git checkout -c feature/new-feature
+
+# 使用 bm 管理它
+$ bm add
+# → 选择"添加现有分支"
+# → 选择 feature/new-feature
+# → 输入需求文档 URL
+# → 分支纳入管理
+```
+
+## 技术栈
+
+- **Node.js** >= 18.0.0
+- **TypeScript** 5.3
+- **Commander.js** - CLI 框架
+- **Inquirer.js** - 交互式命令行
+- **Chalk** - 终端颜色
+- **fs-extra** - 文件操作
+- **open** - 浏览器打开
+
+## 常见问题
+
+### Q: 为什么 `bm set` 后无法发布？
+
+A: 检查配置是否完整，生产环境是必填项。可以执行 `bm set` 查看当前配置。
+
+### Q: 发布时提示"工作区有未提交的改动"？
+
+A: 需要先提交或暂存当前的代码修改，确保工作区干净。
+
+### Q: 合并冲突如何处理？
+
+A: `bm deploy` 会检测到冲突并提示：
+- 选择"中止"会取消本次发布，回到冲突前状态
+- 选择"继续"会等待你手动解决冲突，按回车后继续发布
+
+### Q: 可以跳过测试/预发直接发布生产吗？
+
+A: 可以，但会有警告提示。建议按测试 → 预发 → 生产的流程发布。
+
+### Q: 如何迁移旧版本数据？
+
+A: 旧版本数据在 `~/.branch-manager/data.json`，新版本在 `~/.bm/`。由于数据结构完全不同，建议重新配置和添加分支。
+
+## 开发
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/branch-manager.git
+git clone https://github.com/enmeen/branch-manager.git
 cd branch-manager
 
 # 安装依赖
@@ -229,38 +369,27 @@ pnpm run dev
 # 编译
 pnpm run build
 
-# 监听模式
-pnpm run watch
+# 全局链接（本地测试）
+npm link
 ```
 
-详细请查看 [贡献指南](CONTRIBUTING.md)
+## License
 
-## 🏗️ 技术栈
+[MIT](LICENSE) © 2025 enmeen
 
-- **Node.js** + **TypeScript**
-- **Commander.js** - CLI 框架
-- **Inquirer.js** - 交互式命令行
-- **Chalk** - 终端颜色
-- **fs-extra** - 文件操作
-
-## 📝 License
-
-[MIT](LICENSE) © 2025
-
-## 🤝 贡献
+## 贡献
 
 欢迎贡献代码、报告问题或提出建议！
 
-请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与贡献。
-
-## 📮 联系方式
-
-- GitHub Issues: [提交问题](https://github.com/your-username/branch-manager/issues)
+- GitHub Issues: [提交问题](https://github.com/enmeen/branch-manager/issues)
+- Pull Requests: [贡献代码](https://github.com/enmeen/branch-manager/pulls)
 
 ---
 
 <div align="center">
 
 **如果觉得有用，请给个 ⭐️ Star 支持一下！**
+
+Made with ❤️ by [enmeen](https://github.com/enmeen)
 
 </div>

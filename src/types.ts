@@ -1,48 +1,80 @@
-export type BranchStatus = 'developing' | 'testing' | 'completed' | 'pending-release' | 'on-hold' | 'abandoned';
+// ============ 环境类型 ============
+export type Env = 'test' | 'pre' | 'prod';
 
-export type BuildType = 'test' | 'staging' | 'production';
+// ============ 需求分支状态 ============
+export type FeatureStatus =
+  | '开发中'
+  | '已发布测试'
+  | '已发布预发'
+  | '已发布线上'
+  | '已完成';
 
-export interface Branch {
-  name: string;
-  description: string;
-  status: BranchStatus;
-  createdAt: string;
-  updatedAt: string;
+// ============ 部署历史记录 ============
+export interface DeployHistory {
+  env: Env;
+  at: number; // timestamp
 }
 
-export interface Project {
-  branches: Branch[];
-  buildUrls?: {
-    test?: string;
-    staging?: string;
-    production?: string;
+// ============ 需求分支信息 ============
+export interface Feature {
+  branch: string; // 需求分支名，如 feat/xxx
+  doc: string; // 技术方案文档链接
+  baseBranch: string; // 基础分支（通常是 prod 分支）
+  status: FeatureStatus;
+  createdAt: number; // timestamp
+  updatedAt: number; // timestamp
+  deployHistory: DeployHistory[];
+}
+
+// ============ 仓库配置 ============
+export interface RepoConfig {
+  branches: {
+    test?: string; // 测试环境分支名（可选）
+    pre?: string; // 预发环境分支名（可选）
+    prod: string; // 生产环境分支名（必填）
+  };
+  deployUrls: {
+    test?: string; // 测试环境部署URL（可选）
+    pre?: string; // 预发环境部署URL（可选）
+    prod: string; // 生产环境部署URL（必填）
   };
 }
 
-export interface Data {
-  projects: Record<string, Project>;
+// ============ 配置文件结构 (~/.bm/config.json) ============
+export interface Config {
+  repos: Record<string, RepoConfig>;
 }
 
-export const STATUS_LABELS: Record<BranchStatus, string> = {
-  'developing': '开发中',
-  'testing': '测试中',
-  'completed': '已完成',
-  'pending-release': '待发布',
-  'on-hold': '暂停',
-  'abandoned': '已废弃'
+// ============ 仓库状态 ============
+export interface RepoState {
+  features: Feature[];
+}
+
+// ============ 状态文件结构 (~/.bm/state.json) ============
+export interface State {
+  repos: Record<string, RepoState>;
+}
+
+// ============ 状态标签和颜色映射 ============
+export const STATUS_LABELS: Record<FeatureStatus, string> = {
+  '开发中': '开发中',
+  '已发布测试': '已发布测试',
+  '已发布预发': '已发布预发',
+  '已发布线上': '已发布线上',
+  '已完成': '已完成'
 };
 
-export const STATUS_COLORS: Record<BranchStatus, string> = {
-  'developing': 'blue',
-  'testing': 'yellow',
-  'completed': 'green',
-  'pending-release': 'magenta',
-  'on-hold': 'gray',
-  'abandoned': 'red'
+export const STATUS_COLORS: Record<FeatureStatus, string> = {
+  '开发中': 'blue',
+  '已发布测试': 'yellow',
+  '已发布预发': 'magenta',
+  '已发布线上': 'red',
+  '已完成': 'green'
 };
 
-export const BUILD_TYPE_LABELS: Record<BuildType, string> = {
-  'test': '发布测试',
-  'staging': '发布预发',
-  'production': '发布线上'
+// ============ 环境标签映射 ============
+export const ENV_LABELS: Record<Env, string> = {
+  'test': '测试',
+  'pre': '预发',
+  'prod': '线上'
 };

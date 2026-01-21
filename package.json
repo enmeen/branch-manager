@@ -1,7 +1,7 @@
 {
   "name": "@enmeen/branch-manager",
-  "version": "1.0.0",
-  "description": "A CLI tool to manage git branches with annotations",
+  "version": "2.0.0",
+  "description": "标准化并自动化需求分支管理、环境发布与状态追踪的 CLI 工具",
   "bin": {
     "bm": "./dist/cli.js"
   },
@@ -15,13 +15,14 @@
     "git",
     "branch",
     "cli",
-    "manager",
-    "gitlab",
-    "branch-manager",
+    "deployment",
     "workflow",
-    "productivity"
+    "feature-branch",
+    "release",
+    "devops",
+    "branch-manager"
   ],
-  "author": "desen",
+  "author": "enmeen",
   "license": "MIT",
   "repository": {
     "type": "git",
