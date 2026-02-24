@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { Storage } from './storage';
 import { setConfig } from './commands/set';
 import { add } from './commands/add';
+import { remove } from './commands/remove';
 import { deploy } from './commands/deploy';
 import { info } from './commands/info';
 
@@ -36,6 +37,13 @@ async function main() {
     .description('基于 prod 分支创建需求分支，并进入开发状态')
     .action(async () => {
       await add(storage);
+    });
+
+  program
+    .command('remove')
+    .description('从 bm 管理中移除需求分支')
+    .action(async () => {
+      await remove(storage);
     });
 
   program

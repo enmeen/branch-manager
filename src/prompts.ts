@@ -356,3 +356,58 @@ export async function promptForOverwriteFeature(): Promise<boolean> {
 
   return confirmed;
 }
+
+// ============ 移除分支相关提示 ============
+
+/**
+ * 提示选择要移除的分支
+ */
+export async function promptForRemoveBranch(features: Array<{ branch: string, status: string }>): Promise<string> {
+  const choices = features.map(f => ({
+    name: `${f.branch} (${f.status})`,
+    value: f.branch
+  }));
+
+  const { branch } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'branch',
+      message: '选择要移除的分支:',
+      choices
+    }
+  ]);
+
+  return branch;
+}
+
+/**
+ * 确认移除分支
+ */
+export async function promptForRemoveConfirm(branchName: string): Promise<boolean> {
+  const { confirmed } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirmed',
+      message: `确认要从 bm 管理中移除分支 "${branchName}"?`,
+      default: false
+    }
+  ]);
+
+  return confirmed;
+}
+
+/**
+ * 询问是否删除实际的 git 分支
+ */
+export async function promptForDeleteGitBranch(): Promise<boolean> {
+  const { confirmed } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirmed',
+      message: '是否同时删除本地的 git 分支?',
+      default: false
+    }
+  ]);
+
+  return confirmed;
+}

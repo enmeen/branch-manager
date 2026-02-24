@@ -1,6 +1,41 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 
 // ============ 基础 Git 操作 ============
+
+/**
+ * 安全执行 Git 命令（参数化方式，防止命令注入）
+ * @param command Git 子命令（如 'checkout', 'branch' 等）
+ * @param args 命令参数数组
+ * @returns 命令输出（stdout）
+ * @throws Error 当命令执行失败时抛出错误
+ *
+ * 为什么使用 spawnSync 而非 execSync:
+ * - spawnSync 通过参数数组传递命令，天然防止命令注入
+ * - execSync 使用字符串拼接，用户输入可能包含恶意命令（如 branchName = "master; rm -rf /"）
+ * - spawnSync 的参数会被自动转义，确保每个参数都被视为单个参数而非命令
+ */
+function execGitCommand(command: string, args: string[]): string {
+  try {
+    const result = spawnSync('git', [command, ...args], {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.status !== 0) {
+      // 优先使用 stderr，如果为空则使用 stdout
+      const errorOutput = result.stderr || result.stdout || '';
+      throw new Error(errorOutput.trim() || `git ${command} failed with code ${result.status}`);
+    }
+
+    return result.stdout || '';
+  } catch (error: any) {
+    throw error;
+  }
+}
 
 /**
  * 检查是否在 git 仓库中
@@ -83,7 +118,7 @@ export function hasUncommittedChanges(): boolean {
  */
 export function getLocalBranches(): string[] {
   try {
-    const output = execSync('git branch', { encoding: 'utf-8', stdio: 'pipe' });
+    const output = execGitCommand('branch', []);
     return output
       .split('\n')
       .map(line => line.replace('*', '').trim())
@@ -98,7 +133,7 @@ export function getLocalBranches(): string[] {
  */
 export function getRemoteBranches(): string[] {
   try {
-    const output = execSync('git branch -r', { encoding: 'utf-8', stdio: 'pipe' });
+    const output = execGitCommand('branch', ['-r']);
     return output
       .split('\n')
       .map(line => line.trim())
@@ -129,7 +164,7 @@ export function hasRemoteBranch(branchName: string): boolean {
  */
 export function checkoutBranch(branchName: string): void {
   try {
-    execSync(`git checkout ${branchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+    execGitCommand('checkout', [branchName]);
   } catch (error: any) {
     throw new Error(`切换到分支 ${branchName} 失败: ${error.message}`);
   }
@@ -140,7 +175,7 @@ export function checkoutBranch(branchName: string): void {
  */
 export function createAndCheckoutBranch(newBranch: string, fromBranch: string): void {
   try {
-    execSync(`git checkout -b ${newBranch} ${fromBranch}`, { encoding: 'utf-8', stdio: 'pipe' });
+    execGitCommand('checkout', ['-b', newBranch, fromBranch]);
   } catch (error: any) {
     throw new Error(`从 ${fromBranch} 创建分支 ${newBranch} 失败: ${error.message}`);
   }
@@ -162,7 +197,7 @@ export function fetch(): void {
  */
 export function mergeBranch(branchName: string): void {
   try {
-    execSync(`git merge ${branchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+    execGitCommand('merge', [branchName]);
   } catch (error: any) {
     throw new Error(`合并分支 ${branchName} 失败: ${error.message}`);
   }
@@ -174,9 +209,9 @@ export function mergeBranch(branchName: string): void {
 export function pushBranch(branchName?: string): void {
   try {
     if (branchName) {
-      execSync(`git push origin ${branchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+      execGitCommand('push', ['origin', branchName]);
     } else {
-      execSync('git push', { encoding: 'utf-8', stdio: 'pipe' });
+      execGitCommand('push', []);
     }
   } catch (error: any) {
     throw new Error(`推送到远端失败: ${error.message}`);
@@ -216,5 +251,16 @@ export function abortMerge(): void {
     execSync('git merge --abort', { encoding: 'utf-8', stdio: 'pipe' });
   } catch (error: any) {
     throw new Error(`中止合并失败: ${error.message}`);
+  }
+}
+
+/**
+ * 删除本地分支
+ */
+export function deleteLocalBranch(branchName: string): void {
+  try {
+    execGitCommand('branch', ['-D', branchName]);
+  } catch (error: any) {
+    throw new Error(`删除分支 ${branchName} 失败: ${error.message}`);
   }
 }
