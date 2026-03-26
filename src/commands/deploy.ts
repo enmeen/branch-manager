@@ -23,19 +23,30 @@ import {
   promptForUnmanagedBranch,
   promptForReturnToBranch
 } from '../prompts';
-import type { Env, FeatureStatus } from '../types';
+import { outputSuccess, outputError } from '../utils/json';
+import type { Env, FeatureStatus, JsonOptions, DeployCommandData } from '../types';
 import { ENV_LABELS } from '../types';
 
-export async function deploy(storage: Storage): Promise<void> {
+interface DeployOptions extends JsonOptions {
+  env?: 'test' | 'pre' | 'prod';
+}
+
+export async function deploy(storage: Storage, options: DeployOptions = {}): Promise<void> {
+  const { json, env: optEnv } = options;
+
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
-    console.error(chalk.red('错误: 当前目录不是 git 仓库'));
+    const errorMsg = '当前目录不是 git 仓库';
+    if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
   // 2. 检查工作区是否干净
   if (hasUncommittedChanges()) {
-    console.error(chalk.red('错误: 当前工作区有未提交的改动'));
+    const errorMsg = '当前工作区有未提交的改动';
+    if (json) return outputError(errorMsg, 'UNCOMMITTED_CHANGES');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请先提交或暂存改动后再发布'));
     process.exit(1);
   }
@@ -50,7 +61,9 @@ export async function deploy(storage: Storage): Promise<void> {
   // 4. 检查配置是否存在
   const config = storage.config.getRepoConfig(repoKey);
   if (!config) {
-    console.error(chalk.red('错误: 仓库尚未配置'));
+    const errorMsg = '仓库尚未配置';
+    if (json) return outputError(errorMsg, 'NOT_CONFIGURED');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请先执行 "bm set" 配置环境分支和部署 URL'));
     process.exit(1);
   }
@@ -58,10 +71,26 @@ export async function deploy(storage: Storage): Promise<void> {
   // 5. 检查当前分支是否是环境分支（避免误操作）
   const { test: testBranch, pre: preBranch, prod: prodBranch } = config.branches;
   if ([testBranch, preBranch, prodBranch].includes(currentBranch)) {
-    console.error(chalk.red('错误: 当前分支是环境分支，无法发布'));
+    const errorMsg = '当前分支是环境分支，无法发布';
+    if (json) return outputError(errorMsg, 'IS_ENV_BRANCH');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请切换到需求分支后再执行发布'));
     process.exit(1);
   }
+
+  // ========== JSON 模式 ==========
+  if (json) {
+    if (!optEnv) {
+      return outputError('JSON 模式下 --env 参数必填', 'MISSING_ENV');
+    }
+    try {
+      return await deployJsonMode(storage, repoKey, currentBranch, optEnv, config);
+    } catch (error: any) {
+      return outputError(error.message, 'DEPLOY_FAILED');
+    }
+  }
+
+  // ========== 交互模式 ==========
 
   // 6. 检查当前分支是否在 state 中
   const feature = storage.state.getFeature(repoKey, currentBranch);
@@ -297,4 +326,78 @@ export async function deploy(storage: Storage): Promise<void> {
     console.log(chalk.yellow('请检查错误信息并手动处理'));
     process.exit(1);
   }
+}
+
+// ========== JSON 模式实现 ==========
+
+async function deployJsonMode(
+  storage: Storage,
+  repoKey: string,
+  currentBranch: string,
+  targetEnv: Env,
+  config: any
+): Promise<void> {
+  const targetBranchName = config.branches[targetEnv];
+  const targetUrl = config.deployUrls[targetEnv];
+
+  if (!targetBranchName || !targetUrl) {
+    throw new Error(`${ENV_LABELS[targetEnv]} 环境配置不完整`);
+  }
+
+  // 检查是否满足发布流程（跳过警告，直接发布）
+  const feature = storage.state.getFeature(repoKey, currentBranch);
+
+  // 切换到目标分支
+  fetch();
+
+  if (!hasLocalBranch(targetBranchName)) {
+    checkoutBranch(targetBranchName);
+  } else {
+    checkoutBranch(targetBranchName);
+  }
+
+  // 拉取最新代码
+  const { execSync } = require('child_process');
+  try {
+    execSync(`git pull origin ${targetBranchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+  } catch {
+    // 拉取失败继续
+  }
+
+  // 合并需求分支
+  try {
+    mergeBranch(currentBranch);
+  } catch (error: any) {
+    // 合并冲突时直接抛出错误
+    throw new Error(`合并冲突: ${error.message}`);
+  }
+
+  // 推送到远端
+  try {
+    pushBranch(targetBranchName);
+  } catch (error: any) {
+    throw new Error(`推送失败: ${error.message}`);
+  }
+
+  // 更新状态
+  const newStatus: FeatureStatus =
+    targetEnv === 'test' ? '已发布测试' :
+    targetEnv === 'pre' ? '已发布预发' :
+    '已发布线上';
+
+  if (feature) {
+    await storage.state.updateFeature(repoKey, currentBranch, {
+      status: newStatus
+    });
+    await storage.state.addDeployHistory(repoKey, currentBranch, targetEnv);
+  }
+
+  const now = Date.now();
+  const data: DeployCommandData = {
+    env: targetEnv,
+    branch: currentBranch,
+    deployedAt: now,
+    deployUrl: targetUrl
+  };
+  outputSuccess(data);
 }

@@ -78,3 +78,62 @@ export const ENV_LABELS: Record<Env, string> = {
   'pre': '预发',
   'prod': '线上'
 };
+
+// ============ JSON 响应类型（AI 调用模式） ============
+export interface JsonSuccess<T = unknown> {
+  success: true;
+  data: T;
+}
+
+export interface JsonError {
+  success: false;
+  error: string;
+  code?: string;
+}
+
+export type JsonResponse<T = unknown> = JsonSuccess<T> | JsonError;
+
+// ============ JSON 命令选项 ============
+export interface JsonOptions {
+  json?: boolean;
+}
+
+// ============ 各命令 JSON 响应数据类型 ============
+export interface AddCommandData {
+  branch: string;
+  status: FeatureStatus;
+  createdAt: number;
+}
+
+export interface DeployCommandData {
+  env: Env;
+  branch: string;
+  deployedAt: number;
+  deployUrl?: string;
+}
+
+export interface InfoCommandData {
+  repository: string;
+  branches: Array<{
+    name: string;
+    status: FeatureStatus;
+    doc: string;
+    createdAt: number;
+    updatedAt: number;
+    deployHistory: DeployHistory[];
+  }>;
+  currentBranch?: string;
+}
+
+export interface RemoveCommandData {
+  removed: string;
+  gitDeleted: boolean;
+}
+
+export interface SetCommandData {
+  config: {
+    test?: { branch: string; url: string };
+    pre?: { branch: string; url: string };
+    prod: { branch: string; url: string };
+  };
+}

@@ -2,7 +2,8 @@ import chalk from 'chalk';
 import { Storage } from '../storage';
 import { isInGitRepository, getRepoKey, getCurrentBranch } from '../git';
 import { STATUS_COLORS, STATUS_LABELS, ENV_LABELS } from '../types';
-import type { FeatureStatus } from '../types';
+import { outputSuccess, outputError } from '../utils/json';
+import type { FeatureStatus, JsonOptions, InfoCommandData } from '../types';
 
 // 旧状态到新状态的映射
 const STATUS_MIGRATION_MAP: Record<string, string> = {
@@ -30,10 +31,14 @@ function getStatusColor(status: string): any {
   return chalk.gray;
 }
 
-export async function info(storage: Storage): Promise<void> {
+export async function info(storage: Storage, options: JsonOptions = {}): Promise<void> {
+  const { json } = options;
+
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
-    console.error(chalk.red('错误: 当前目录不是 git 仓库'));
+    const errorMsg = '当前目录不是 git 仓库';
+    if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
@@ -45,6 +50,25 @@ export async function info(storage: Storage): Promise<void> {
 
   // 3. 获取所有需求分支
   const features = storage.state.getFeatures(repoKey);
+
+  // ========== JSON 模式 ==========
+  if (json) {
+    const data: InfoCommandData = {
+      repository: repoKey,
+      branches: features.map(f => ({
+        name: f.branch,
+        status: f.status,
+        doc: f.doc || '',
+        createdAt: f.createdAt,
+        updatedAt: f.updatedAt,
+        deployHistory: f.deployHistory
+      })),
+      currentBranch
+    };
+    return outputSuccess(data);
+  }
+
+  // ========== 交互模式 ==========
 
   if (features.length === 0) {
     console.log(chalk.yellow('还没有记录的需求分支'));

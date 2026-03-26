@@ -19,18 +19,30 @@ import {
   promptForDocUrl,
   promptForOverwriteFeature
 } from '../prompts';
-import type { Feature } from '../types';
+import { outputSuccess, outputError } from '../utils/json';
+import type { Feature, JsonOptions, AddCommandData } from '../types';
 
-export async function add(storage: Storage): Promise<void> {
+interface AddOptions extends JsonOptions {
+  branch?: string;
+  doc?: string;
+}
+
+export async function add(storage: Storage, options: AddOptions = {}): Promise<void> {
+  const { json, branch: optBranch, doc: optDoc } = options;
+
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
-    console.error(chalk.red('错误: 当前目录不是 git 仓库'));
+    const errorMsg = '当前目录不是 git 仓库';
+    if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
   // 2. 检查工作区是否干净
   if (hasUncommittedChanges()) {
-    console.error(chalk.red('错误: 当前工作区有未提交的改动'));
+    const errorMsg = '当前工作区有未提交的改动';
+    if (json) return outputError(errorMsg, 'UNCOMMITTED_CHANGES');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请先提交或暂存改动后再添加需求分支'));
     process.exit(1);
   }
@@ -41,10 +53,27 @@ export async function add(storage: Storage): Promise<void> {
   // 4. 检查配置是否存在
   const config = storage.config.getRepoConfig(repoKey);
   if (!config) {
-    console.error(chalk.red('错误: 仓库尚未配置'));
+    const errorMsg = '仓库尚未配置';
+    if (json) return outputError(errorMsg, 'NOT_CONFIGURED');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请先执行 "bm set" 配置环境分支和部署 URL'));
     process.exit(1);
   }
+
+  // ========== JSON 模式 ==========
+  if (json) {
+    if (!optBranch) {
+      return outputError('JSON 模式下 --branch 参数必填', 'MISSING_BRANCH');
+    }
+
+    try {
+      return await addJsonMode(storage, repoKey, config, optBranch, optDoc || '');
+    } catch (error: any) {
+      return outputError(error.message, 'ADD_FAILED');
+    }
+  }
+
+  // ========== 交互模式 ==========
 
   console.log(chalk.cyan(`\n当前仓库: ${repoKey}\n`));
 
@@ -252,4 +281,125 @@ export async function add(storage: Storage): Promise<void> {
     console.log(chalk.gray('─'.repeat(60)));
     console.log();
   }
+}
+
+// ========== JSON 模式实现 ==========
+
+async function addJsonMode(
+  storage: Storage,
+  repoKey: string,
+  config: any,
+  branchName: string,
+  docUrl: string
+): Promise<void> {
+  const prodBranch = config.branches.prod;
+
+  // 检查分支是否已存在
+  const localExists = hasLocalBranch(branchName);
+  const remoteExists = hasRemoteBranch(branchName);
+
+  if (localExists || remoteExists) {
+    // 分支已存在，作为"添加现有分支"模式处理
+    return await addExistingBranchJsonMode(storage, repoKey, prodBranch, branchName, docUrl);
+  }
+
+  // 创建新分支
+  try {
+    fetch();
+
+    if (!hasLocalBranch(prodBranch)) {
+      if (hasRemoteBranch(prodBranch)) {
+        checkoutBranch(prodBranch);
+      } else {
+        throw new Error(`${prodBranch} 分支在本地和远端都不存在`);
+      }
+    } else {
+      checkoutBranch(prodBranch);
+    }
+
+    // 拉取最新代码
+    const { execSync } = require('child_process');
+    try {
+      execSync(`git pull origin ${prodBranch}`, { encoding: 'utf-8', stdio: 'pipe' });
+    } catch {
+      // 拉取失败继续
+    }
+  } catch (error: any) {
+    throw new Error(`同步 ${prodBranch} 分支失败: ${error.message}`);
+  }
+
+  // 创建新分支
+  try {
+    createAndCheckoutBranch(branchName, prodBranch);
+  } catch (error: any) {
+    throw new Error(`创建分支失败: ${error.message}`);
+  }
+
+  // 写入 state
+  const now = Date.now();
+  const feature: Feature = {
+    branch: branchName,
+    doc: docUrl,
+    baseBranch: prodBranch,
+    status: '开发中',
+    createdAt: now,
+    updatedAt: now,
+    deployHistory: []
+  };
+
+  try {
+    await storage.state.addFeature(repoKey, feature);
+  } catch (error: any) {
+    throw new Error(`保存状态失败: ${error.message}`);
+  }
+
+  const data: AddCommandData = {
+    branch: branchName,
+    status: '开发中',
+    createdAt: now
+  };
+  outputSuccess(data);
+}
+
+async function addExistingBranchJsonMode(
+  storage: Storage,
+  repoKey: string,
+  baseBranch: string,
+  branchName: string,
+  docUrl: string
+): Promise<void> {
+  // 切换到目标分支
+  const currentBranch = getCurrentBranch();
+  if (currentBranch !== branchName) {
+    try {
+      checkoutBranch(branchName);
+    } catch (error: any) {
+      throw new Error(`切换分支失败: ${error.message}`);
+    }
+  }
+
+  // 写入 state
+  const now = Date.now();
+  const feature: Feature = {
+    branch: branchName,
+    doc: docUrl,
+    baseBranch: baseBranch,
+    status: '开发中',
+    createdAt: now,
+    updatedAt: now,
+    deployHistory: []
+  };
+
+  try {
+    await storage.state.addFeature(repoKey, feature);
+  } catch (error: any) {
+    throw new Error(`保存状态失败: ${error.message}`);
+  }
+
+  const data: AddCommandData = {
+    branch: branchName,
+    status: '开发中',
+    createdAt: now
+  };
+  outputSuccess(data);
 }

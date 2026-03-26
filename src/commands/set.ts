@@ -8,13 +8,35 @@ import {
   promptForDeployUrlOptional,
   promptForConfirmation
 } from '../prompts';
-import type { Env, RepoConfig } from '../types';
+import { outputSuccess, outputError } from '../utils/json';
+import type { Env, RepoConfig, JsonOptions, SetCommandData } from '../types';
 import { ENV_LABELS } from '../types';
 
-export async function setConfig(storage: Storage): Promise<void> {
+interface SetOptions extends JsonOptions {
+  testBranch?: string;
+  testUrl?: string;
+  preBranch?: string;
+  preUrl?: string;
+  prodBranch?: string;
+  prodUrl?: string;
+}
+
+export async function setConfig(storage: Storage, options: SetOptions = {}): Promise<void> {
+  const {
+    json,
+    testBranch,
+    testUrl,
+    preBranch,
+    preUrl,
+    prodBranch,
+    prodUrl
+  } = options;
+
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
-    console.error(chalk.red('错误: 当前目录不是 git 仓库'));
+    const errorMsg = '当前目录不是 git 仓库';
+    if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
@@ -22,6 +44,27 @@ export async function setConfig(storage: Storage): Promise<void> {
   const repoKey = getRepoKey();
 
   console.log(chalk.cyan(`\n当前仓库: ${repoKey}\n`));
+
+  // ========== JSON 模式 ==========
+  if (json) {
+    if (!prodBranch || !prodUrl) {
+      return outputError('JSON 模式下 --prod-branch 和 --prod-url 参数必填', 'MISSING_PROD_CONFIG');
+    }
+    try {
+      return await setJsonMode(storage, repoKey, {
+        testBranch,
+        testUrl,
+        preBranch,
+        preUrl,
+        prodBranch,
+        prodUrl
+      });
+    } catch (error: any) {
+      return outputError(error.message, 'SET_FAILED');
+    }
+  }
+
+  // ========== 交互模式 ==========
 
   // 3. 展示已有配置
   const existingConfig = storage.config.getRepoConfig(repoKey);
@@ -58,9 +101,9 @@ export async function setConfig(storage: Storage): Promise<void> {
 
   // prod 环境必填
   console.log(chalk.yellow('\n⚠️  生产环境为必须配置项'));
-  const prodBranch = await promptForBranchName('prod', existingConfig?.branches.prod);
+  const inputProdBranch = await promptForBranchName('prod', existingConfig?.branches.prod);
   console.log();
-  const prodUrl = await promptForDeployUrl('prod', existingConfig?.deployUrls.prod);
+  const inputProdUrl = await promptForDeployUrl('prod', existingConfig?.deployUrls.prod);
 
   // 5. 构建配置对象
   const branches: Partial<Record<Env, string>> = {};
@@ -68,11 +111,11 @@ export async function setConfig(storage: Storage): Promise<void> {
 
   if (testConfig.branch) branches.test = testConfig.branch;
   if (preConfig.branch) branches.pre = preConfig.branch;
-  branches.prod = prodBranch;
+  branches.prod = inputProdBranch;
 
   if (testConfig.url) deployUrls.test = testConfig.url;
   if (preConfig.url) deployUrls.pre = preConfig.url;
-  deployUrls.prod = prodUrl;
+  deployUrls.prod = inputProdUrl;
 
   const config: RepoConfig = {
     branches: branches as any,
@@ -103,4 +146,63 @@ export async function setConfig(storage: Storage): Promise<void> {
   console.log(`  ${ENV_LABELS.prod}: ${prodUrl}`);
   console.log(chalk.gray('─'.repeat(60)));
   console.log();
+}
+
+// ========== JSON 模式实现 ==========
+
+async function setJsonMode(
+  storage: Storage,
+  repoKey: string,
+  options: {
+    testBranch?: string;
+    testUrl?: string;
+    preBranch?: string;
+    preUrl?: string;
+    prodBranch: string;
+    prodUrl: string;
+  }
+): Promise<void> {
+  const {
+    testBranch,
+    testUrl,
+    preBranch,
+    preUrl,
+    prodBranch,
+    prodUrl
+  } = options;
+
+  // 构建配置对象
+  const branches: Partial<Record<Env, string>> = {};
+  const deployUrls: Partial<Record<Env, string>> = {};
+
+  if (testBranch) branches.test = testBranch;
+  if (preBranch) branches.pre = preBranch;
+  branches.prod = prodBranch;
+
+  if (testUrl) deployUrls.test = testUrl;
+  if (preUrl) deployUrls.pre = preUrl;
+  deployUrls.prod = prodUrl;
+
+  const config: RepoConfig = {
+    branches: branches as any,
+    deployUrls: deployUrls as any
+  };
+
+  // 保存配置
+  await storage.config.setRepoConfig(repoKey, config);
+
+  // 构建响应数据
+  const data: SetCommandData = {
+    config: {
+      ...(testBranch && testUrl && {
+        test: { branch: testBranch, url: testUrl }
+      }),
+      ...(preBranch && preUrl && {
+        pre: { branch: preBranch, url: preUrl }
+      }),
+      prod: { branch: prodBranch, url: prodUrl }
+    } as any
+  };
+
+  outputSuccess(data);
 }

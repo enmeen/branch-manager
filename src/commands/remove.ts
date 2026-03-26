@@ -12,11 +12,22 @@ import {
   promptForRemoveConfirm,
   promptForDeleteGitBranch
 } from '../prompts';
+import { outputSuccess, outputError } from '../utils/json';
+import type { JsonOptions, RemoveCommandData } from '../types';
 
-export async function remove(storage: Storage): Promise<void> {
+interface RemoveOptions extends JsonOptions {
+  branch?: string;
+  deleteGit?: boolean;
+}
+
+export async function remove(storage: Storage, options: RemoveOptions = {}): Promise<void> {
+  const { json, branch: optBranch, deleteGit: optDeleteGit } = options;
+
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
-    console.error(chalk.red('错误: 当前目录不是 git 仓库'));
+    const errorMsg = '当前目录不是 git 仓库';
+    if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
@@ -27,11 +38,26 @@ export async function remove(storage: Storage): Promise<void> {
   const features = storage.state.getFeatures(repoKey);
 
   if (features.length === 0) {
-    console.error(chalk.red('错误: 当前仓库没有被 bm 管理的需求分支'));
+    const errorMsg = '当前仓库没有被 bm 管理的需求分支';
+    if (json) return outputError(errorMsg, 'NO_FEATURES');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('提示: 使用 "bm add" 添加需求分支'));
     process.exit(1);
   }
 
+  // ========== JSON 模式 ==========
+  if (json) {
+    if (!optBranch) {
+      return outputError('JSON 模式下 --branch 参数必填', 'MISSING_BRANCH');
+    }
+    try {
+      return await removeJsonMode(storage, repoKey, optBranch, optDeleteGit || false);
+    } catch (error: any) {
+      return outputError(error.message, 'REMOVE_FAILED');
+    }
+  }
+
+  // ========== 交互模式 ==========
   console.log(chalk.cyan(`\n当前仓库: ${repoKey}\n`));
 
   // 4. 列出所有被管理的分支
@@ -119,4 +145,51 @@ export async function remove(storage: Storage): Promise<void> {
     console.error(chalk.red(`\n✗ 移除失败: ${error.message}`));
     process.exit(1);
   }
+}
+
+// ========== JSON 模式实现 ==========
+
+async function removeJsonMode(
+  storage: Storage,
+  repoKey: string,
+  branchToRemove: string,
+  deleteGitBranch: boolean
+): Promise<void> {
+  // 检查分支是否存在
+  const feature = storage.state.getFeature(repoKey, branchToRemove);
+  if (!feature) {
+    throw new Error(`未找到分支 "${branchToRemove}" 的记录`);
+  }
+
+  // 检查是否在当前分支上
+  const currentBranch = getCurrentBranch();
+  if (currentBranch === branchToRemove) {
+    throw new Error(`当前正在分支 "${branchToRemove}" 上，请先切换到其他分支`);
+  }
+
+  let gitDeleted = false;
+
+  // 删除实际的 git 分支
+  if (deleteGitBranch) {
+    if (hasLocalBranch(branchToRemove)) {
+      try {
+        deleteLocalBranch(branchToRemove);
+        gitDeleted = true;
+      } catch (error: any) {
+        throw new Error(`删除本地分支失败: ${error.message}`);
+      }
+    }
+  }
+
+  // 从 state 中移除
+  const removed = await storage.state.removeFeature(repoKey, branchToRemove);
+  if (!removed) {
+    throw new Error(`未找到分支 "${branchToRemove}" 的记录`);
+  }
+
+  const data: RemoveCommandData = {
+    removed: branchToRemove,
+    gitDeleted
+  };
+  outputSuccess(data);
 }
