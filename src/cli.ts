@@ -99,9 +99,8 @@ async function main() {
     .option('--branch <name>', '目标分支名')
     .option('--base <branch>', '当分支不存在时，基于该分支创建')
     .option('--path <dir>', 'worktree 路径（默认使用仓库内 .worktrees/ 或 worktrees/）')
-    .option('--doc <text>', '需求文档链接或描述（写入 bm 管理状态）')
     .action(async (options) => {
-      await wtAdd(storage, { ...jsonOption, ...options });
+      await wtAdd({ ...jsonOption, ...options });
     });
 
   wtCommand
