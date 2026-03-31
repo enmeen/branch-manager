@@ -2,8 +2,10 @@ import chalk from 'chalk';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { Storage } from '../storage';
 import {
   addWorktree,
+  getRepoKey,
   getCurrentBranch,
   getRepositoryRoot,
   hasLocalBranch,
@@ -15,6 +17,8 @@ import {
   removeWorktree,
 } from '../git';
 import {
+  promptForDocUrl,
+  promptForOverwriteFeature,
   promptForWorktreeBranch,
   promptForWorktreeBranchSelect,
   promptForWorktreePathSelect,
@@ -33,6 +37,7 @@ interface WtAddOptions extends JsonOptions {
   branch?: string;
   base?: string;
   path?: string;
+  doc?: string;
 }
 
 interface WtRemoveOptions extends JsonOptions {
@@ -96,8 +101,9 @@ function resolveDefaultWorktreeBaseDir(repoRoot: string, json?: boolean): string
   return candidateA;
 }
 
-export async function wtAdd(options: WtAddOptions = {}): Promise<void> {
+export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promise<void> {
   const { json, base, path: pathOpt } = options;
+  let { doc } = options;
   let { branch } = options;
 
   if (!isInGitRepository()) {
@@ -114,6 +120,10 @@ export async function wtAdd(options: WtAddOptions = {}): Promise<void> {
 
   if (!branch) {
     return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
+  }
+
+  if (!json && typeof doc === 'undefined') {
+    doc = await promptForDocUrl();
   }
 
   const repoRoot = getRepositoryRoot();
@@ -179,6 +189,50 @@ export async function wtAdd(options: WtAddOptions = {}): Promise<void> {
       'WORKTREE_ADD_FAILED',
       '请检查分支名、基础分支以及目录权限'
     );
+  }
+
+  // 同步写入 bm 管理状态（与 bm add 一致，便于 info 展示）
+  try {
+    const repoKey = getRepoKey();
+    const now = Date.now();
+    const existingFeature = storage.state.getFeature(repoKey, branch);
+    const nextDoc = typeof doc === 'string'
+      ? doc
+      : (existingFeature?.doc || '');
+
+    if (!json && existingFeature) {
+      console.log(chalk.yellow(`\n警告: 分支 "${branch}" 已在 bm 中有记录`));
+      console.log(chalk.gray(`  当前文档: ${existingFeature.doc || '(无)'}`));
+      const overwrite = await promptForOverwriteFeature();
+      if (!overwrite) {
+        console.log(chalk.gray('已跳过更新 bm 记录'));
+      } else {
+        await storage.state.addFeature(repoKey, {
+          branch,
+          doc: nextDoc,
+          baseBranch: baseBranch || existingFeature.baseBranch || getCurrentBranch(),
+          status: existingFeature.status || '开发中',
+          createdAt: existingFeature.createdAt || now,
+          updatedAt: now,
+          deployHistory: existingFeature.deployHistory || []
+        });
+      }
+    } else {
+      await storage.state.addFeature(repoKey, {
+        branch,
+        doc: nextDoc,
+        baseBranch: baseBranch || existingFeature?.baseBranch || getCurrentBranch(),
+        status: existingFeature?.status || '开发中',
+        createdAt: existingFeature?.createdAt || now,
+        updatedAt: now,
+        deployHistory: existingFeature?.deployHistory || []
+      });
+    }
+  } catch (error: any) {
+    if (!json) {
+      console.log(chalk.yellow(`⚠ worktree 已创建，但写入 bm 状态失败: ${error.message}`));
+      console.log(chalk.gray('可后续执行 bm add --branch <name> --doc <text> 进行补录'));
+    }
   }
 
   const data: WorktreeAddCommandData = {

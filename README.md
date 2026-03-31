@@ -221,10 +221,11 @@ bm info
 
 Git Worktree 子命令组，用于在同一仓库并行开发多个分支。
 
-#### `bm wt add --branch <name> [--base <branch>] [--path <dir>]`
+#### `bm wt add --branch <name> [--base <branch>] [--path <dir>] [--doc <text>]`
 
 - 创建并检出 worktree
 - 当分支不存在时，从 `--base`（未传则当前分支）创建新分支
+- 可通过 `--doc` 传入需求文档链接/描述，并写入 bm 状态（`bm info` 可见）
 - 默认目录优先级：
   1. 仓库内 `.worktrees/`
   2. 仓库内 `worktrees/`
