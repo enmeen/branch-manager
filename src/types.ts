@@ -137,3 +137,32 @@ export interface SetCommandData {
     prod: { branch: string; url: string };
   };
 }
+
+export interface WorktreeAddCommandData {
+  branch: string;
+  path: string;
+  created: boolean;
+  baseBranch: string;
+  repository: string;
+}
+
+export interface WorktreeListCommandData {
+  repository: string;
+  items: Array<{
+    path: string;
+    branch: string;
+    head: string;
+    isCurrent: boolean;
+    isLocked: boolean;
+  }>;
+}
+
+export interface WorktreeRemoveCommandData {
+  path: string;
+  removed: boolean;
+}
+
+export interface WorktreeOpenCommandData {
+  path: string;
+  branch: string;
+}
