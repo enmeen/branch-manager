@@ -6,7 +6,7 @@ import { add } from './commands/add';
 import { remove } from './commands/remove';
 import { deploy } from './commands/deploy';
 import { info } from './commands/info';
-import { wtAdd, wtList, wtOpen, wtPrune, wtRemove, wtSwitch } from './commands/wt';
+import { wtAdd, wtList, wtOpen, wtPrune, wtRemove } from './commands/wt';
 import { JsonOptions } from './types';
 
 const program = new Command();
@@ -132,14 +132,6 @@ async function main() {
     .option('--branch <name>', '分支名')
     .action(async (options) => {
       await wtOpen({ ...jsonOption, ...options });
-    });
-
-  wtCommand
-    .command('switch')
-    .description('进入指定分支对应的 worktree 目录（开启子 shell）')
-    .option('--branch <name>', '分支名')
-    .action(async (options) => {
-      await wtSwitch({ ...jsonOption, ...options });
     });
 
   program.parse();

@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -21,7 +20,6 @@ import type {
   WorktreeListCommandData,
   WorktreeOpenCommandData,
   WorktreeRemoveCommandData,
-  WorktreeSwitchCommandData,
 } from '../types';
 
 interface WtAddOptions extends JsonOptions {
@@ -36,10 +34,6 @@ interface WtRemoveOptions extends JsonOptions {
 }
 
 interface WtOpenOptions extends JsonOptions {
-  branch?: string;
-}
-
-interface WtSwitchOptions extends JsonOptions {
   branch?: string;
 }
 
@@ -336,55 +330,4 @@ export async function wtOpen(options: WtOpenOptions = {}): Promise<void> {
   }
 
   console.log(absPath);
-}
-
-export async function wtSwitch(options: WtSwitchOptions = {}): Promise<void> {
-  const { json, branch } = options;
-
-  if (!isInGitRepository()) {
-    return fail(json, '当前目录不是 git 仓库', 'NOT_GIT_REPO');
-  }
-
-  if (!branch) {
-    return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
-  }
-
-  const found = listWorktrees().find(item => item.branch === branch);
-  if (!found) {
-    return fail(
-      json,
-      `未找到分支 "${branch}" 对应的 worktree`,
-      'WORKTREE_NOT_FOUND',
-      '请先执行 "bm wt list" 确认分支'
-    );
-  }
-
-  const absPath = path.resolve(found.path);
-
-  if (json) {
-    const data: WorktreeSwitchCommandData = {
-      path: absPath,
-      branch,
-      entered: false,
-    };
-    outputSuccess(data);
-    return;
-  }
-
-  const shell = process.env.SHELL || '/bin/zsh';
-  console.log(chalk.cyan(`进入 worktree: ${absPath}`));
-  console.log(chalk.gray(`提示: 输入 exit 可返回上一层 shell`));
-
-  const result = spawnSync(shell, {
-    cwd: absPath,
-    stdio: 'inherit',
-  });
-
-  if (result.error) {
-    return fail(false, `进入 worktree 失败: ${result.error.message}`, 'WORKTREE_SWITCH_FAILED');
-  }
-
-  if (typeof result.status === 'number' && result.status !== 0) {
-    process.exit(result.status);
-  }
 }
