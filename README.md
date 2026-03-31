@@ -250,6 +250,12 @@ Git Worktree 子命令组，用于在同一仓库并行开发多个分支。
 
 - 输出该分支对应的 worktree 路径（便于脚本/自动化工具快速跳转）
 
+#### `bm wt switch --branch <name>`
+
+- 直接进入该分支对应的 worktree 目录
+- 实现方式为开启一个 `cwd` 在目标目录的子 shell
+- 退出子 shell（`exit`）后返回原 shell
+
 ## JSON 模式（AI/自动化）
 
 全局参数 `--json` 可用于所有命令，返回统一结构：
@@ -283,6 +289,8 @@ Git Worktree 子命令组，用于在同一仓库并行开发多个分支。
   - `success`
 - `bm --json wt open`
   - `success`, `path`, `branch`
+- `bm --json wt switch`
+  - `success`, `path`, `branch`, `entered`
 
 ### Worktree 相关错误码
 

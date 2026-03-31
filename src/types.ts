@@ -166,3 +166,9 @@ export interface WorktreeOpenCommandData {
   path: string;
   branch: string;
 }
+
+export interface WorktreeSwitchCommandData {
+  path: string;
+  branch: string;
+  entered: boolean;
+}
