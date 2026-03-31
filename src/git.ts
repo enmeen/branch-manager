@@ -1,5 +1,4 @@
 import { execSync, spawnSync } from 'child_process';
-import path from 'path';
 
 // ============ 基础 Git 操作 ============
 
@@ -15,10 +14,9 @@ import path from 'path';
  * - execSync 使用字符串拼接，用户输入可能包含恶意命令（如 branchName = "master; rm -rf /"）
  * - spawnSync 的参数会被自动转义，确保每个参数都被视为单个参数而非命令
  */
-function execGitCommand(command: string, args: string[], cwd?: string): string {
+function execGitCommand(command: string, args: string[]): string {
   try {
     const result = spawnSync('git', [command, ...args], {
-      cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
     });
@@ -59,17 +57,6 @@ export function getCurrentBranch(): string {
     return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8', stdio: 'pipe' }).trim();
   } catch (error: any) {
     throw new Error(`无法获取当前分支: ${error.message}`);
-  }
-}
-
-/**
- * 获取仓库根目录绝对路径
- */
-export function getRepositoryRoot(): string {
-  try {
-    return execGitCommand('rev-parse', ['--show-toplevel']).trim();
-  } catch (error: any) {
-    throw new Error(`无法获取仓库根目录: ${error.message}`);
   }
 }
 
@@ -276,150 +263,4 @@ export function deleteLocalBranch(branchName: string): void {
   } catch (error: any) {
     throw new Error(`删除分支 ${branchName} 失败: ${error.message}`);
   }
-}
-
-// ============ Worktree 相关操作 ============
-
-export interface WorktreeItem {
-  path: string;
-  branch: string;
-  head: string;
-  isCurrent: boolean;
-  isLocked: boolean;
-}
-
-/**
- * 列出当前仓库的所有 worktree
- */
-export function listWorktrees(): WorktreeItem[] {
-  try {
-    const output = execGitCommand('worktree', ['list', '--porcelain']);
-    const lines = output.split('\n');
-
-    const parsed: Array<Omit<WorktreeItem, 'isCurrent'>> = [];
-    let current: Omit<WorktreeItem, 'isCurrent'> | null = null;
-
-    const pushCurrent = () => {
-      if (current) parsed.push(current);
-      current = null;
-    };
-
-    for (const line of lines) {
-      if (!line.trim()) {
-        pushCurrent();
-        continue;
-      }
-
-      const [key, ...rest] = line.split(' ');
-      const value = rest.join(' ');
-
-      if (key === 'worktree') {
-        pushCurrent();
-        current = {
-          path: value,
-          branch: '(detached)',
-          head: '',
-          isLocked: false,
-        };
-        continue;
-      }
-
-      if (!current) continue;
-
-      if (key === 'HEAD') current.head = value;
-      if (key === 'branch') current.branch = value.replace('refs/heads/', '');
-      if (key === 'detached') current.branch = '(detached)';
-      if (key === 'locked') current.isLocked = true;
-    }
-    pushCurrent();
-
-    const cwd = path.resolve(process.cwd());
-    return parsed.map((item) => {
-      const wtPath = path.resolve(item.path);
-      const isCurrent = cwd === wtPath || cwd.startsWith(`${wtPath}${path.sep}`);
-      return {
-        ...item,
-        isCurrent,
-      };
-    });
-  } catch (error: any) {
-    throw new Error(`无法获取 worktree 列表: ${error.message}`);
-  }
-}
-
-/**
- * 新增 worktree
- */
-export function addWorktree(worktreePath: string, branch: string, base?: string): void {
-  try {
-    if (base) {
-      execGitCommand('worktree', ['add', '-b', branch, worktreePath, base]);
-      return;
-    }
-    execGitCommand('worktree', ['add', worktreePath, branch]);
-  } catch (error: any) {
-    throw new Error(`创建 worktree 失败: ${error.message}`);
-  }
-}
-
-/**
- * 删除 worktree
- */
-export function removeWorktree(worktreePath: string, force?: boolean): void {
-  try {
-    const args = ['remove'];
-    if (force) args.push('--force');
-    args.push(worktreePath);
-    execGitCommand('worktree', args);
-  } catch (error: any) {
-    throw new Error(`删除 worktree 失败: ${error.message}`);
-  }
-}
-
-/**
- * 清理失效的 worktree 引用
- */
-export function pruneWorktree(): void {
-  try {
-    execGitCommand('worktree', ['prune']);
-  } catch (error: any) {
-    throw new Error(`清理 worktree 失败: ${error.message}`);
-  }
-}
-
-/**
- * 判断路径是否被 .gitignore 忽略
- */
-export function isPathIgnored(targetPath: string): boolean {
-  const result = spawnSync('git', ['check-ignore', targetPath], {
-    encoding: 'utf-8',
-    stdio: 'pipe',
-  });
-
-  if (result.status === 0) return true;
-  if (result.status === 1) return false;
-
-  const errorOutput = result.stderr || result.stdout || '';
-  throw new Error(errorOutput.trim() || 'git check-ignore 执行失败');
-}
-
-/**
- * 检查指定 worktree 是否有未提交改动
- */
-export function hasUncommittedChangesInPath(worktreePath: string): boolean {
-  const result = spawnSync('git', ['-C', worktreePath, 'status', '--porcelain'], {
-    encoding: 'utf-8',
-    stdio: 'pipe',
-  });
-
-  if (result.error) {
-    throw new Error(`无法检查 worktree 改动状态: ${result.error.message}`);
-  }
-
-  if (result.status !== 0) {
-    const errorOutput = result.stderr || result.stdout || '';
-    throw new Error(errorOutput.trim() || `git status failed with code ${result.status}`);
-  }
-
-  return (result.stdout || '').trim().length > 0;
 }

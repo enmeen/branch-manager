@@ -6,7 +6,6 @@ import { add } from './commands/add';
 import { remove } from './commands/remove';
 import { deploy } from './commands/deploy';
 import { info } from './commands/info';
-import { wtAdd, wtList, wtOpen, wtPrune, wtRemove } from './commands/wt';
 import { JsonOptions } from './types';
 
 const program = new Command();
@@ -86,52 +85,6 @@ async function main() {
     .description('查看当前仓库所有由 bm 管理的需求分支与状态信息')
     .action(async () => {
       await info(storage, { ...jsonOption });
-    });
-
-  // wt 命令组
-  const wtCommand = program
-    .command('wt')
-    .description('Git worktree 管理（并行开发多个需求分支）');
-
-  wtCommand
-    .command('add')
-    .description('创建并检出 worktree（分支不存在时可基于 --base 创建）')
-    .option('--branch <name>', '目标分支名')
-    .option('--base <branch>', '当分支不存在时，基于该分支创建')
-    .option('--path <dir>', 'worktree 路径（默认使用仓库内 .worktrees/ 或 worktrees/）')
-    .action(async (options) => {
-      await wtAdd({ ...jsonOption, ...options });
-    });
-
-  wtCommand
-    .command('list')
-    .description('列出当前仓库全部 worktree')
-    .action(async () => {
-      await wtList({ ...jsonOption });
-    });
-
-  wtCommand
-    .command('remove')
-    .description('移除指定 worktree')
-    .option('--path <dir>', 'worktree 路径')
-    .option('--force', '强制移除（跳过未提交改动校验）')
-    .action(async (options) => {
-      await wtRemove({ ...jsonOption, ...options });
-    });
-
-  wtCommand
-    .command('prune')
-    .description('清理无效的 worktree 引用')
-    .action(async () => {
-      await wtPrune({ ...jsonOption });
-    });
-
-  wtCommand
-    .command('open')
-    .description('输出指定分支对应的 worktree 路径')
-    .option('--branch <name>', '分支名')
-    .action(async (options) => {
-      await wtOpen({ ...jsonOption, ...options });
     });
 
   program.parse();
