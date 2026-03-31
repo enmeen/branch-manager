@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { Storage } from '../storage';
-import { isInGitRepository, getRepoKey, getCurrentBranch } from '../git';
+import { isInGitRepository, getRepoKey, getCurrentBranch, listWorktrees } from '../git';
 import { STATUS_COLORS, STATUS_LABELS, ENV_LABELS } from '../types';
 import { outputSuccess, outputError } from '../utils/json';
 import type { FeatureStatus, JsonOptions, InfoCommandData } from '../types';
@@ -51,6 +51,30 @@ export async function info(storage: Storage, options: JsonOptions = {}): Promise
   // 3. 获取所有需求分支
   const features = storage.state.getFeatures(repoKey);
 
+  const renderWorktreeSection = () => {
+    try {
+      const worktrees = listWorktrees();
+      if (worktrees.length > 0) {
+        console.log(chalk.cyan('Worktree 列表:'));
+        console.log(chalk.gray('─'.repeat(60)));
+        worktrees.forEach((wt, index) => {
+          const isCurrent = wt.isCurrent;
+          const currentMark = isCurrent ? chalk.green('*') : ' ';
+          const lockMark = wt.isLocked ? chalk.yellow(' [LOCKED]') : '';
+          const indexNum = chalk.gray(String(index + 1).padStart(2));
+
+          console.log(`${currentMark}${indexNum} ${chalk.bold(wt.branch)}${lockMark}`);
+          console.log(`      路径: ${wt.path}`);
+          console.log(`      HEAD: ${wt.head}`);
+        });
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log();
+      }
+    } catch {
+      // worktree 展示失败不影响 info 主流程
+    }
+  };
+
   // ========== JSON 模式 ==========
   if (json) {
     const data: InfoCommandData = {
@@ -73,6 +97,7 @@ export async function info(storage: Storage, options: JsonOptions = {}): Promise
   if (features.length === 0) {
     console.log(chalk.yellow('还没有记录的需求分支'));
     console.log(chalk.gray('使用 "bm add" 创建需求分支\n'));
+    renderWorktreeSection();
     return;
   }
 
@@ -136,6 +161,9 @@ export async function info(storage: Storage, options: JsonOptions = {}): Promise
 
   console.log(chalk.gray('─'.repeat(60)));
   console.log();
+
+  // 6. 展示 worktree 信息（仅交互模式，避免影响 JSON 输出结构）
+  renderWorktreeSection();
 }
 
 /**
