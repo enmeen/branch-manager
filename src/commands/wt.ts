@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { Storage } from '../storage';
 import {
@@ -68,6 +69,12 @@ function isInsideRepo(repoRoot: string, targetPath: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+function expandUserPath(inputPath: string): string {
+  if (inputPath === '~') return os.homedir();
+  if (inputPath.startsWith('~/')) return path.join(os.homedir(), inputPath.slice(2));
+  return path.resolve(process.cwd(), inputPath);
+}
+
 function ensureWorktreePathIgnored(repoRoot: string, targetPath: string, json?: boolean): void {
   if (!isInsideRepo(repoRoot, targetPath)) return;
 
@@ -82,23 +89,11 @@ function ensureWorktreePathIgnored(repoRoot: string, targetPath: string, json?: 
   }
 }
 
-function resolveDefaultWorktreeBaseDir(repoRoot: string, json?: boolean): string {
-  const candidateA = path.join(repoRoot, '.worktrees');
-  const candidateB = path.join(repoRoot, 'worktrees');
-
-  if (fs.existsSync(candidateA) && fs.statSync(candidateA).isDirectory()) {
-    ensureWorktreePathIgnored(repoRoot, candidateA, json);
-    return candidateA;
-  }
-
-  if (fs.existsSync(candidateB) && fs.statSync(candidateB).isDirectory()) {
-    ensureWorktreePathIgnored(repoRoot, candidateB, json);
-    return candidateB;
-  }
-
-  ensureWorktreePathIgnored(repoRoot, candidateA, json);
-  fs.mkdirSync(candidateA, { recursive: true });
-  return candidateA;
+function resolveDefaultWorktreeBaseDir(repoKey: string): string {
+  const safeRepoKey = repoKey.replace(/[^\w./-]/g, '_');
+  const baseDir = path.join(os.homedir(), '.bm', 'workTree', safeRepoKey);
+  fs.mkdirSync(baseDir, { recursive: true });
+  return baseDir;
 }
 
 export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promise<void> {
@@ -127,6 +122,7 @@ export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promi
   }
 
   const repoRoot = getRepositoryRoot();
+  const repoKey = getRepoKey();
   const allWorktrees = listWorktrees();
 
   const branchInUse = allWorktrees.find(item => item.branch === branch);
@@ -140,8 +136,8 @@ export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promi
   }
 
   const baseDir = pathOpt
-    ? path.resolve(process.cwd(), pathOpt)
-    : resolveDefaultWorktreeBaseDir(repoRoot, json);
+    ? expandUserPath(pathOpt)
+    : resolveDefaultWorktreeBaseDir(repoKey);
   const targetPath = pathOpt ? baseDir : path.join(baseDir, branch);
 
   ensureWorktreePathIgnored(repoRoot, targetPath, json);
@@ -211,6 +207,8 @@ export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promi
           branch,
           doc: nextDoc,
           baseBranch: baseBranch || existingFeature.baseBranch || getCurrentBranch(),
+          worktreePath: path.resolve(targetPath),
+          workspaceMode: 'worktree',
           status: existingFeature.status || '开发中',
           createdAt: existingFeature.createdAt || now,
           updatedAt: now,
@@ -222,6 +220,8 @@ export async function wtAdd(storage: Storage, options: WtAddOptions = {}): Promi
         branch,
         doc: nextDoc,
         baseBranch: baseBranch || existingFeature?.baseBranch || getCurrentBranch(),
+        worktreePath: path.resolve(targetPath),
+        workspaceMode: 'worktree',
         status: existingFeature?.status || '开发中',
         createdAt: existingFeature?.createdAt || now,
         updatedAt: now,
@@ -325,7 +325,7 @@ export async function wtRemove(options: WtRemoveOptions = {}): Promise<void> {
     return fail(json, '请提供 --path <dir>', 'MISSING_PATH');
   }
 
-  const targetPath = path.resolve(process.cwd(), pathOpt);
+  const targetPath = expandUserPath(pathOpt);
   const match = allWorktrees.find(item => path.resolve(item.path) === targetPath);
 
   if (!match) {

@@ -423,3 +423,48 @@ export function hasUncommittedChangesInPath(worktreePath: string): boolean {
 
   return (result.stdout || '').trim().length > 0;
 }
+
+/**
+ * 在指定工作目录执行 git 子命令
+ */
+export function runGitInPath(worktreePath: string, args: string[]): string {
+  if (args.length === 0) return '';
+  const [command, ...rest] = args;
+  try {
+    return execGitCommand(command, rest, worktreePath);
+  } catch (error: any) {
+    throw new Error(`在 ${worktreePath} 执行 git ${command} 失败: ${error.message}`);
+  }
+}
+
+/**
+ * 在指定目录 pull 指定分支
+ */
+export function pullBranchInPath(worktreePath: string, branchName: string): void {
+  runGitInPath(worktreePath, ['pull', 'origin', branchName]);
+}
+
+/**
+ * 在指定目录 merge 指定分支
+ */
+export function mergeBranchInPath(worktreePath: string, branchName: string): void {
+  runGitInPath(worktreePath, ['merge', branchName]);
+}
+
+/**
+ * 在指定目录 push 指定分支
+ */
+export function pushBranchInPath(worktreePath: string, branchName: string): void {
+  runGitInPath(worktreePath, ['push', 'origin', branchName]);
+}
+
+/**
+ * 从远端创建本地分支
+ */
+export function createLocalBranchFromRemote(branchName: string): void {
+  try {
+    execGitCommand('branch', [branchName, `origin/${branchName}`]);
+  } catch (error: any) {
+    throw new Error(`从远端创建本地分支 ${branchName} 失败: ${error.message}`);
+  }
+}

@@ -204,6 +204,28 @@ export async function promptForFeatureBranch(): Promise<string> {
 }
 
 /**
+ * 提示输入基础分支（默认 prod 分支）
+ */
+export async function promptForBaseBranch(defaultBranch: string): Promise<string> {
+  const { baseBranch } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'baseBranch',
+      message: '输入基础分支（回车使用默认）:',
+      default: defaultBranch,
+      validate: (input: string) => {
+        if (!input || input.trim().length === 0) {
+          return '基础分支不能为空';
+        }
+        return true;
+      }
+    }
+  ]);
+
+  return baseBranch.trim();
+}
+
+/**
  * 提示选择现有分支
  */
 export async function promptForExistingBranch(branches: string[]): Promise<string> {

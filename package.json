@@ -3,7 +3,7 @@
   "version": "3.0.0-alpha.0",
   "description": "标准化并自动化需求分支管理、环境发布与状态追踪的 CLI 工具",
   "bin": {
-    "bm": "./dist/cli.js"
+    "bmw": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

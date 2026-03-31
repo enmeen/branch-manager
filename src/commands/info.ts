@@ -83,6 +83,7 @@ export async function info(storage: Storage, options: JsonOptions = {}): Promise
         name: f.branch,
         status: f.status,
         doc: f.doc || '',
+        worktreePath: f.worktreePath || '',
         createdAt: f.createdAt,
         updatedAt: f.updatedAt,
         deployHistory: f.deployHistory
@@ -135,6 +136,7 @@ export async function info(storage: Storage, options: JsonOptions = {}): Promise
     console.log(`      状态: ${status}`);
     console.log(`      文档: ${feature.doc || chalk.gray('(无)')}`);
     console.log(`      基础分支: ${feature.baseBranch}`);
+    console.log(`      Worktree: ${feature.worktreePath || chalk.gray('(无)')}`);
     console.log(`      创建时间: ${createdAt}`);
     console.log(`      更新时间: ${updatedAt}`);
     console.log(`      ${deployInfo}`);

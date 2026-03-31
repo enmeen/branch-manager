@@ -5,7 +5,9 @@ import {
   getRepoKey,
   getCurrentBranch,
   hasLocalBranch,
-  deleteLocalBranch
+  deleteLocalBranch,
+  hasUncommittedChangesInPath,
+  removeWorktree
 } from '../git';
 import {
   promptForRemoveBranch,
@@ -18,10 +20,11 @@ import type { JsonOptions, RemoveCommandData } from '../types';
 interface RemoveOptions extends JsonOptions {
   branch?: string;
   deleteGit?: boolean;
+  force?: boolean;
 }
 
 export async function remove(storage: Storage, options: RemoveOptions = {}): Promise<void> {
-  const { json, branch: optBranch, deleteGit: optDeleteGit } = options;
+  const { json, branch: optBranch, deleteGit: optDeleteGit, force } = options;
 
   // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
@@ -95,6 +98,7 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
   console.log(`  基础分支: ${feature.baseBranch}`);
   console.log(`  状态:     ${chalk.blue(feature.status)}`);
   console.log(`  文档:     ${feature.doc || chalk.gray('(无)')}`);
+  console.log(`  Worktree: ${feature.worktreePath || chalk.gray('(无)')}`);
   console.log(`  创建时间: ${new Date(feature.createdAt).toLocaleString('zh-CN')}`);
   console.log(`  更新时间: ${new Date(feature.updatedAt).toLocaleString('zh-CN')}`);
   if (feature.deployHistory && feature.deployHistory.length > 0) {
@@ -113,7 +117,26 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
     return;
   }
 
-  // 10. 询问是否删除实际的 git 分支
+  // 10. 删除关联 worktree（纯 worktree 模式）
+  if (feature.worktreePath) {
+    try {
+      if (!force && hasUncommittedChangesInPath(feature.worktreePath)) {
+        console.error(chalk.red(`\n错误: worktree 有未提交改动: ${feature.worktreePath}`));
+        console.log(chalk.yellow('提示: 先处理改动，或使用 --force'));
+        process.exit(1);
+      }
+      removeWorktree(feature.worktreePath, force);
+      console.log(chalk.green(`\n✓ 已删除 worktree: ${feature.worktreePath}`));
+    } catch (error: any) {
+      console.log(chalk.yellow(`\n⚠ 删除 worktree 失败: ${error.message}`));
+      if (!force) {
+        console.log(chalk.yellow('提示: 如确认忽略，请使用 --force'));
+        process.exit(1);
+      }
+    }
+  }
+
+  // 11. 询问是否删除实际的 git 分支
   const deleteGitBranch = await promptForDeleteGitBranch();
 
   if (deleteGitBranch) {
@@ -132,7 +155,7 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
     }
   }
 
-  // 11. 从 state 中移除
+  // 12. 从 state 中移除
   try {
     const removed = await storage.state.removeFeature(repoKey, branchToRemove);
     if (removed) {
@@ -168,6 +191,17 @@ async function removeJsonMode(
   }
 
   let gitDeleted = false;
+
+  if (feature.worktreePath) {
+    if (hasUncommittedChangesInPath(feature.worktreePath)) {
+      throw new Error(`worktree 有未提交改动: ${feature.worktreePath}`);
+    }
+    try {
+      removeWorktree(feature.worktreePath, true);
+    } catch (error: any) {
+      throw new Error(`删除 worktree 失败: ${error.message}`);
+    }
+  }
 
   // 删除实际的 git 分支
   if (deleteGitBranch) {

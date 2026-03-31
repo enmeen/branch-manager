@@ -1,40 +1,66 @@
 import chalk from 'chalk';
+import fs from 'fs';
 import open from 'open';
+import os from 'os';
+import path from 'path';
 import { Storage } from '../storage';
 import {
-  isInGitRepository,
-  getRepoKey,
-  hasUncommittedChanges,
-  getCurrentBranch,
+  addWorktree,
+  createLocalBranchFromRemote,
   fetch,
-  checkoutBranch,
-  mergeBranch,
-  pushBranch,
-  hasMergeConflicts,
-  continueMerge,
-  abortMerge,
-  hasLocalBranch
+  getCurrentBranch,
+  getRepoKey,
+  getRepositoryRoot,
+  hasLocalBranch,
+  hasRemoteBranch,
+  hasUncommittedChangesInPath,
+  isInGitRepository,
+  listWorktrees,
+  mergeBranchInPath,
+  pullBranchInPath,
+  pushBranchInPath,
+  runGitInPath,
 } from '../git';
 import {
+  promptForConflictResolution,
+  promptForDeployComplete,
   promptForDeployEnv,
   promptForProdConfirm,
-  promptForDeployComplete,
-  promptForConflictResolution,
-  promptForUnmanagedBranch,
-  promptForReturnToBranch
 } from '../prompts';
-import { outputSuccess, outputError } from '../utils/json';
-import type { Env, FeatureStatus, JsonOptions, DeployCommandData } from '../types';
+import { outputError, outputSuccess } from '../utils/json';
+import type { DeployCommandData, Env, FeatureStatus, JsonOptions } from '../types';
 import { ENV_LABELS } from '../types';
 
 interface DeployOptions extends JsonOptions {
   env?: 'test' | 'pre' | 'prod';
 }
 
+function ensureEnvWorktreePath(repoRoot: string, repoKey: string, envBranch: string): string {
+  const existing = listWorktrees().find(item => item.branch === envBranch);
+  if (existing) return path.resolve(existing.path);
+
+  const safeRepoKey = repoKey.replace(/[^\w./-]/g, '_');
+  const envPath = path.join(os.homedir(), '.bm', 'workTree', safeRepoKey, '.env', envBranch);
+
+  if (fs.existsSync(envPath) && fs.readdirSync(envPath).length > 0) {
+    throw new Error(`环境 worktree 路径已存在且非空: ${envPath}`);
+  }
+
+  fetch();
+  if (!hasLocalBranch(envBranch)) {
+    if (!hasRemoteBranch(envBranch)) {
+      throw new Error(`环境分支 ${envBranch} 在本地和远端都不存在`);
+    }
+    createLocalBranchFromRemote(envBranch);
+  }
+
+  addWorktree(envPath, envBranch);
+  return path.resolve(envPath);
+}
+
 export async function deploy(storage: Storage, options: DeployOptions = {}): Promise<void> {
   const { json, env: optEnv } = options;
 
-  // 1. 检查是否在 git 仓库中
   if (!isInGitRepository()) {
     const errorMsg = '当前目录不是 git 仓库';
     if (json) return outputError(errorMsg, 'NOT_GIT_REPO');
@@ -42,362 +68,139 @@ export async function deploy(storage: Storage, options: DeployOptions = {}): Pro
     process.exit(1);
   }
 
-  // 2. 检查工作区是否干净
-  if (hasUncommittedChanges()) {
-    const errorMsg = '当前工作区有未提交的改动';
+  const repoRoot = getRepositoryRoot();
+  const repoKey = getRepoKey();
+  const currentBranch = getCurrentBranch();
+  const feature = storage.state.getFeature(repoKey, currentBranch);
+
+  if (!feature) {
+    const errorMsg = `当前分支 "${currentBranch}" 未被 bmw 管理`;
+    if (json) return outputError(errorMsg, 'NO_FEATURES');
+    console.error(chalk.red(`错误: ${errorMsg}`));
+    console.log(chalk.yellow('请先执行 "bmw add" 创建/接管 worktree 分支'));
+    process.exit(1);
+  }
+
+  if (!feature.worktreePath) {
+    const errorMsg = `分支 "${currentBranch}" 缺少 worktreePath`;
+    if (json) return outputError(errorMsg, 'WORKTREE_NOT_FOUND');
+    console.error(chalk.red(`错误: ${errorMsg}`));
+    process.exit(1);
+  }
+
+  if (hasUncommittedChangesInPath(feature.worktreePath)) {
+    const errorMsg = `需求分支 worktree 有未提交改动: ${feature.worktreePath}`;
     if (json) return outputError(errorMsg, 'UNCOMMITTED_CHANGES');
     console.error(chalk.red(`错误: ${errorMsg}`));
     console.log(chalk.yellow('请先提交或暂存改动后再发布'));
     process.exit(1);
   }
 
-  // 3. 获取 repoKey 和当前分支
-  const repoKey = getRepoKey();
-  const currentBranch = getCurrentBranch();
-
-  console.log(chalk.cyan(`\n当前仓库: ${repoKey}`));
-  console.log(chalk.cyan(`当前分支: ${currentBranch}\n`));
-
-  // 4. 检查配置是否存在
   const config = storage.config.getRepoConfig(repoKey);
   if (!config) {
     const errorMsg = '仓库尚未配置';
     if (json) return outputError(errorMsg, 'NOT_CONFIGURED');
     console.error(chalk.red(`错误: ${errorMsg}`));
-    console.log(chalk.yellow('请先执行 "bm set" 配置环境分支和部署 URL'));
+    console.log(chalk.yellow('请先执行 "bmw set" 配置环境分支和部署 URL'));
     process.exit(1);
   }
 
-  // 5. 检查当前分支是否是环境分支（避免误操作）
-  const { test: testBranch, pre: preBranch, prod: prodBranch } = config.branches;
-  if ([testBranch, preBranch, prodBranch].includes(currentBranch)) {
-    const errorMsg = '当前分支是环境分支，无法发布';
-    if (json) return outputError(errorMsg, 'IS_ENV_BRANCH');
-    console.error(chalk.red(`错误: ${errorMsg}`));
-    console.log(chalk.yellow('请切换到需求分支后再执行发布'));
-    process.exit(1);
-  }
-
-  // ========== JSON 模式 ==========
+  let targetEnv: Env;
   if (json) {
-    if (!optEnv) {
-      return outputError('JSON 模式下 --env 参数必填', 'MISSING_ENV');
-    }
-    try {
-      return await deployJsonMode(storage, repoKey, currentBranch, optEnv, config);
-    } catch (error: any) {
-      return outputError(error.message, 'DEPLOY_FAILED');
-    }
-  }
-
-  // ========== 交互模式 ==========
-
-  // 6. 检查当前分支是否在 state 中
-  const feature = storage.state.getFeature(repoKey, currentBranch);
-  if (!feature) {
-    console.log(chalk.yellow(`警告: 当前分支 "${currentBranch}" 未被 bm 管理`));
-    const continueDeploy = await promptForUnmanagedBranch();
-    if (!continueDeploy) {
-      console.log(chalk.gray('\n已取消发布'));
-      return;
-    }
+    if (!optEnv) return outputError('JSON 模式下 --env 参数必填', 'MISSING_ENV');
+    targetEnv = optEnv;
   } else {
-    // 显示当前分支状态
-    console.log(chalk.cyan('需求分支信息:'));
-    console.log(chalk.gray('─'.repeat(60)));
-    console.log(`  分支:   ${chalk.bold(feature.branch)}`);
-    console.log(`  状态:   ${feature.status}`);
-    console.log(`  文档:   ${feature.doc || chalk.gray('(无)')}`);
-    console.log(chalk.gray('─'.repeat(60)));
-    console.log();
+    const configuredEnvs: Env[] = [];
+    if (config.branches.test && config.deployUrls.test) configuredEnvs.push('test');
+    if (config.branches.pre && config.deployUrls.pre) configuredEnvs.push('pre');
+    if (config.branches.prod && config.deployUrls.prod) configuredEnvs.push('prod');
+    targetEnv = await promptForDeployEnv(configuredEnvs);
   }
 
-  // 7. 选择发布环境（只显示已配置的环境）
-  const configuredEnvs: Env[] = [];
-  if (config.branches.test && config.deployUrls.test) configuredEnvs.push('test');
-  if (config.branches.pre && config.deployUrls.pre) configuredEnvs.push('pre');
-  if (config.branches.prod && config.deployUrls.prod) configuredEnvs.push('prod');
-
-  if (configuredEnvs.length === 0) {
-    console.error(chalk.red('错误: 没有已配置的环境'));
-    console.log(chalk.yellow('请先执行 "bm set" 配置至少一个环境'));
-    process.exit(1);
-  }
-
-  const targetEnv = await promptForDeployEnv(configuredEnvs);
-
-  // 获取目标环境配置（此时确保不为 undefined）
   const targetBranchName = config.branches[targetEnv];
   const targetUrl = config.deployUrls[targetEnv];
-
   if (!targetBranchName || !targetUrl) {
-    console.error(chalk.red(`错误: ${ENV_LABELS[targetEnv]} 环境配置不完整`));
-    console.log(chalk.yellow('请执行 "bm set" 完善配置'));
+    const errorMsg = `${ENV_LABELS[targetEnv]} 环境配置不完整`;
+    if (json) return outputError(errorMsg, 'NOT_CONFIGURED');
+    console.error(chalk.red(`错误: ${errorMsg}`));
     process.exit(1);
   }
 
-  console.log(chalk.cyan(`\n发布目标:`));
-  console.log(`  环境: ${ENV_LABELS[targetEnv]} (${targetEnv})`);
-  console.log(`  分支: ${targetBranchName}`);
-  console.log(`  URL:  ${targetUrl}\n`);
-
-  // 8. 线上发布需要二次确认
-  if (targetEnv === 'prod') {
+  if (!json && targetEnv === 'prod') {
     const confirmed = await promptForProdConfirm(targetBranchName);
-    if (!confirmed) {
-      console.log(chalk.gray('已取消发布'));
-      return;
-    }
-    console.log();
+    if (!confirmed) return;
   }
 
-  // 9. 检查是否满足发布流程（可选：必须先发布预发才能发布线上）
-  if (targetEnv === 'prod' && feature) {
-    if (feature.status !== '已发布预发') {
-      console.log(chalk.yellow(`警告: 当前分支状态为 "${feature.status}"，建议先发布到预发环境`));
-      const confirmed = await promptForUnmanagedBranch();
-      if (!confirmed) {
-        console.log(chalk.gray('已取消发布'));
-        return;
-      }
-      console.log();
-    }
+  let envWorktreePath = '';
+  try {
+    envWorktreePath = ensureEnvWorktreePath(repoRoot, repoKey, targetBranchName);
+    pullBranchInPath(envWorktreePath, targetBranchName);
+  } catch (error: any) {
+    if (json) return outputError(`准备环境 worktree 失败: ${error.message}`, 'WORKTREE_NOT_FOUND');
+    console.error(chalk.red(`错误: 准备环境 worktree 失败: ${error.message}`));
+    process.exit(1);
   }
-
-  // 10. 开始发布流程
-  console.log(chalk.cyan('开始发布流程...\n'));
 
   try {
-    // 10.1 切换到目标分支
-    console.log(chalk.yellow(`[1/5] 切换到 ${targetBranchName} 分支...`));
+    mergeBranchInPath(envWorktreePath, currentBranch);
+  } catch (error: any) {
+    if (json) return outputError(`合并失败: ${error.message}`, 'DEPLOY_FAILED');
 
-    // 先 fetch
-    fetch();
-
-    // 检查本地是否有目标分支
-    if (!hasLocalBranch(targetBranchName)) {
-      console.log(chalk.yellow(`  本地 ${targetBranchName} 分支不存在，从远端检出...`));
-      checkoutBranch(targetBranchName);
-    } else {
-      checkoutBranch(targetBranchName);
+    console.log(chalk.red(`合并失败: ${error.message}`));
+    const action = await promptForConflictResolution();
+    if (action === 'abort') {
+      runGitInPath(envWorktreePath, ['merge', '--abort']);
+      return;
     }
+    console.log(chalk.cyan(`请在 ${envWorktreePath} 手动解决冲突并提交后按回车继续...`));
+    await new Promise(resolve => process.stdin.once('data', resolve));
+  }
 
-    console.log(chalk.green(`  ✓ 已切换到 ${targetBranchName}\n`));
+  try {
+    pushBranchInPath(envWorktreePath, targetBranchName);
+  } catch (error: any) {
+    if (json) return outputError(`推送失败: ${error.message}`, 'DEPLOY_FAILED');
+    console.error(chalk.red(`错误: 推送失败: ${error.message}`));
+    process.exit(1);
+  }
 
-    // 10.2 拉取最新代码
-    console.log(chalk.yellow(`[2/5] 拉取 ${targetBranchName} 最新代码...`));
-    const { execSync } = require('child_process');
-    try {
-      execSync(`git pull origin ${targetBranchName}`, { encoding: 'utf-8', stdio: 'pipe' });
-      console.log(chalk.green(`  ✓ ${targetBranchName} 已是最新\n`));
-    } catch (error: any) {
-      // 检查是否是"Already up to date"类型的错误
-      const stderr = error.stderr || error.stdout || '';
-      if (stderr.includes('Already up to date') || stderr.includes('Already up-to-date')) {
-        console.log(chalk.green(`  ✓ ${targetBranchName} 已经是最新\n`));
-      } else {
-        console.error(chalk.red(`  ✗ 拉取失败`));
-        console.error(chalk.red(`  错误: ${error.message}`));
-        console.log(chalk.yellow('\n请检查网络连接或手动处理冲突'));
-        console.log(chalk.yellow('建议执行: git pull origin ' + targetBranchName));
-        abortMerge();
-        process.exit(1);
-      }
-    }
-
-    // 10.3 合并需求分支
-    console.log(chalk.yellow(`[3/5] 合并 ${currentBranch} 到 ${targetBranchName}...`));
-    try {
-      mergeBranch(currentBranch);
-      console.log(chalk.green(`  ✓ 合并成功\n`));
-    } catch (error: any) {
-      console.log(chalk.red(`  ✗ 合并失败: ${error.message}`));
-      console.log(chalk.yellow('\n检测到合并冲突，请手动解决'));
-
-      const action = await promptForConflictResolution();
-
-      if (action === 'abort') {
-        console.log(chalk.yellow('\n正在中止合并...'));
-        abortMerge();
-        console.log(chalk.gray('已取消发布'));
-        return;
-      }
-
-      // 等待用户修复冲突
-      console.log(chalk.cyan('\n请手动解决冲突后，按回车继续...'));
-      await new Promise(resolve => {
-        process.stdin.once('data', resolve);
-      });
-
-      // 继续合并
-      console.log(chalk.yellow('\n正在继续合并...'));
-      try {
-        continueMerge();
-        console.log(chalk.green('  ✓ 冲突已解决，合并完成\n'));
-      } catch (err: any) {
-        console.error(chalk.red(`  ✗ 继续合并失败: ${err.message}`));
-        console.log(chalk.yellow('请检查是否还有未解决的冲突'));
-        abortMerge();
-        process.exit(1);
-      }
-    }
-
-    // 10.4 推送到远端
-    console.log(chalk.yellow(`[4/5] 推送 ${targetBranchName} 到远端...`));
-    try {
-      pushBranch(targetBranchName);
-      console.log(chalk.green(`  ✓ 推送成功\n`));
-    } catch (error: any) {
-      console.error(chalk.red(`  ✗ 推送失败: ${error.message}`));
-      console.log(chalk.yellow('可能远端有更新，请手动处理'));
-      abortMerge();
-      process.exit(1);
-    }
-
-    // 10.5 打开部署页面
-    console.log(chalk.yellow(`[5/5] 打开部署页面...`));
+  if (!json) {
     try {
       await open(targetUrl);
-      console.log(chalk.green(`  ✓ 已在浏览器中打开部署页面\n`));
-    } catch (error) {
-      console.log(chalk.yellow(`  ⚠ 无法自动打开浏览器，请手动访问:`));
-      console.log(chalk.gray(`    ${targetUrl}\n`));
+    } catch {
+      console.log(chalk.yellow(`无法自动打开部署页面，请手动访问: ${targetUrl}`));
     }
 
-    // 11. 等待用户确认发布完成
     const confirmed = await promptForDeployComplete();
-
-    if (!confirmed) {
-      console.log(chalk.yellow('\n发布未完成，状态未更新'));
-      console.log(chalk.gray('提示: 发布完成后，可以手动更新状态'));
-      return;
-    }
-
-    // 12. 更新状态
-    console.log(chalk.cyan('\n正在更新状态...'));
-
-    const newStatus: FeatureStatus =
-      targetEnv === 'test' ? '已发布测试' :
-      targetEnv === 'pre' ? '已发布预发' :
-      '已发布线上';
-
-    if (feature) {
-      try {
-        // 更新需求分支状态
-        await storage.state.updateFeature(repoKey, currentBranch, {
-          status: newStatus
-        });
-
-        // 添加部署历史
-        await storage.state.addDeployHistory(repoKey, currentBranch, targetEnv);
-
-        console.log(chalk.green(`  ✓ 状态已更新为: ${newStatus}`));
-      } catch (error: any) {
-        console.log(chalk.yellow(`  ⚠ 状态更新失败: ${error.message}`));
-        console.log(chalk.yellow('  发布已完成，但状态未更新，请手动处理'));
-        // 注意：这里不 exit(1)，因为发布本身成功了
-      }
-    } else {
-      console.log(chalk.yellow(`  ⚠ 该分支未被 bm 管理，状态未更新`));
-    }
-
-    console.log();
-    console.log(chalk.green('✓ 发布完成！\n'));
-
-    // 13. 询问是否切回原分支
-    const shouldReturn = await promptForReturnToBranch(currentBranch);
-
-    if (shouldReturn) {
-      console.log(chalk.cyan(`正在切换回分支 ${currentBranch}...`));
-      try {
-        checkoutBranch(currentBranch);
-        console.log(chalk.green(`  ✓ 已切换到分支: ${currentBranch}\n`));
-      } catch (error: any) {
-        console.error(chalk.red(`  ✗ 切换分支失败: ${error.message}`));
-        console.log(chalk.yellow(`\n提示: 当前仍在 ${targetBranchName} 分支`));
-        console.log(chalk.gray(`手动切换命令: git checkout ${currentBranch}\n`));
-      }
-    } else {
-      console.log(chalk.gray(`保持在当前分支: ${targetBranchName}\n`));
-    }
-
-  } catch (error: any) {
-    console.error(chalk.red(`\n发布失败: ${error.message}`));
-    console.log(chalk.yellow('请检查错误信息并手动处理'));
-    process.exit(1);
-  }
-}
-
-// ========== JSON 模式实现 ==========
-
-async function deployJsonMode(
-  storage: Storage,
-  repoKey: string,
-  currentBranch: string,
-  targetEnv: Env,
-  config: any
-): Promise<void> {
-  const targetBranchName = config.branches[targetEnv];
-  const targetUrl = config.deployUrls[targetEnv];
-
-  if (!targetBranchName || !targetUrl) {
-    throw new Error(`${ENV_LABELS[targetEnv]} 环境配置不完整`);
+    if (!confirmed) return;
   }
 
-  // 检查是否满足发布流程（跳过警告，直接发布）
-  const feature = storage.state.getFeature(repoKey, currentBranch);
-
-  // 切换到目标分支
-  fetch();
-
-  if (!hasLocalBranch(targetBranchName)) {
-    checkoutBranch(targetBranchName);
-  } else {
-    checkoutBranch(targetBranchName);
-  }
-
-  // 拉取最新代码
-  const { execSync } = require('child_process');
-  try {
-    execSync(`git pull origin ${targetBranchName}`, { encoding: 'utf-8', stdio: 'pipe' });
-  } catch {
-    // 拉取失败继续
-  }
-
-  // 合并需求分支
-  try {
-    mergeBranch(currentBranch);
-  } catch (error: any) {
-    // 合并冲突时直接抛出错误
-    throw new Error(`合并冲突: ${error.message}`);
-  }
-
-  // 推送到远端
-  try {
-    pushBranch(targetBranchName);
-  } catch (error: any) {
-    throw new Error(`推送失败: ${error.message}`);
-  }
-
-  // 更新状态
   const newStatus: FeatureStatus =
     targetEnv === 'test' ? '已发布测试' :
     targetEnv === 'pre' ? '已发布预发' :
     '已发布线上';
 
-  if (feature) {
-    await storage.state.updateFeature(repoKey, currentBranch, {
-      status: newStatus
-    });
-    await storage.state.addDeployHistory(repoKey, currentBranch, targetEnv);
-  }
+  await storage.state.updateFeature(repoKey, currentBranch, {
+    status: newStatus,
+    worktreePath: feature.worktreePath,
+    workspaceMode: 'worktree',
+  });
+  await storage.state.addDeployHistory(repoKey, currentBranch, targetEnv);
 
-  const now = Date.now();
   const data: DeployCommandData = {
     env: targetEnv,
     branch: currentBranch,
-    deployedAt: now,
-    deployUrl: targetUrl
+    deployedAt: Date.now(),
+    deployUrl: targetUrl,
   };
-  outputSuccess(data);
+  if (json) {
+    outputSuccess(data);
+    return;
+  }
+
+  console.log(chalk.green('\n✓ 发布完成'));
+  console.log(`  分支: ${currentBranch}`);
+  console.log(`  环境: ${targetEnv}`);
+  console.log(`  环境分支: ${targetBranchName}`);
+  console.log(`  Worktree: ${envWorktreePath}\n`);
 }

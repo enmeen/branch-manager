@@ -20,6 +20,8 @@ export interface Feature {
   branch: string; // 需求分支名，如 feat/xxx
   doc: string; // 技术方案文档链接
   baseBranch: string; // 基础分支（通常是 prod 分支）
+  worktreePath: string; // worktree 目录绝对路径
+  workspaceMode: 'worktree'; // v4 固定为 worktree 模式
   status: FeatureStatus;
   createdAt: number; // timestamp
   updatedAt: number; // timestamp
@@ -101,6 +103,7 @@ export interface JsonOptions {
 // ============ 各命令 JSON 响应数据类型 ============
 export interface AddCommandData {
   branch: string;
+  worktreePath: string;
   status: FeatureStatus;
   createdAt: number;
 }
@@ -118,6 +121,7 @@ export interface InfoCommandData {
     name: string;
     status: FeatureStatus;
     doc: string;
+    worktreePath: string;
     createdAt: number;
     updatedAt: number;
     deployHistory: DeployHistory[];
