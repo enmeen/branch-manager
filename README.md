@@ -14,6 +14,7 @@
 ## 功能特性
 
 - 🌿 **统一分支管理** - 基于 prod 分支创建需求分支，或接管已有分支
+- 🌲 **Git Worktree 管理** - 支持同仓库并行开发多个需求分支，无需频繁 checkout
 - 🚀 **标准化发布流程** - 自动化 merge + push + 打开部署页面 + 更新状态
 - 📊 **状态追踪** - 完整记录需求生命周期：开发中 → 已发布测试 → 已发布预发 → 已发布线上
 - 🔄 **智能工作流** - 支持创建新分支或管理现有分支，自动返回原分支
@@ -113,6 +114,22 @@ bm info
 - 关联的需求文档链接
 - 部署历史记录
 
+### 5. 并行开发（Worktree）
+
+```bash
+# 创建 worktree（分支不存在时可指定 --base）
+bm wt add --branch feature/a --base main
+
+# 列出所有 worktree
+bm wt list
+
+# 删除 worktree（有未提交改动会拒绝，可加 --force）
+bm wt remove --path ./.worktrees/feature/a
+
+# 清理失效 worktree 引用
+bm wt prune
+```
+
 ## 命令详解
 
 ### `bm set`
@@ -199,6 +216,84 @@ bm info
   - 需求文档
   - 部署历史
 - 当前所在分支高亮显示
+
+### `bm wt`
+
+Git Worktree 子命令组，用于在同一仓库并行开发多个分支。
+
+#### `bm wt add --branch <name> [--base <branch>] [--path <dir>]`
+
+- 创建并检出 worktree
+- 当分支不存在时，从 `--base`（未传则当前分支）创建新分支
+- 默认目录优先级：
+  1. 仓库内 `.worktrees/`
+  2. 仓库内 `worktrees/`
+  3. 若都不存在，自动创建 `.worktrees/`
+- 对仓库内 worktree 路径会校验是否被 `.gitignore` 忽略；未忽略直接报错
+
+#### `bm wt list`
+
+- 列出当前仓库所有 worktree
+- 输出字段包含：`path`、`branch`、`head`、`isCurrent`、`isLocked`
+
+#### `bm wt remove --path <dir> [--force]`
+
+- 移除指定 worktree
+- 默认会检查该 worktree 是否有未提交改动，有改动时拒绝删除
+- 传 `--force` 可强制删除
+
+#### `bm wt prune`
+
+- 执行 `git worktree prune`，清理无效引用
+
+#### `bm wt open --branch <name>`
+
+- 输出该分支对应的 worktree 路径（便于脚本/自动化工具快速跳转）
+
+## JSON 模式（AI/自动化）
+
+全局参数 `--json` 可用于所有命令，返回统一结构：
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+失败时：
+
+```json
+{
+  "success": false,
+  "error": "错误信息",
+  "code": "ERROR_CODE"
+}
+```
+
+### Worktree 命令 JSON 字段
+
+- `bm --json wt add`
+  - `success`, `branch`, `path`, `created`, `baseBranch`, `repository`
+- `bm --json wt list`
+  - `success`, `repository`, `items[]`
+- `bm --json wt remove`
+  - `success`, `path`, `removed`
+- `bm --json wt prune`
+  - `success`
+- `bm --json wt open`
+  - `success`, `path`, `branch`
+
+### Worktree 相关错误码
+
+- `NOT_GIT_REPO`
+- `UNCOMMITTED_CHANGES`
+- `WORKTREE_PATH_NOT_IGNORED`
+- `WORKTREE_ALREADY_EXISTS`
+- `BRANCH_ALREADY_CHECKED_OUT`
+- `WORKTREE_NOT_FOUND`
+- `WORKTREE_REMOVE_FAILED`
+- `WORKTREE_ADD_FAILED`
 
 ## 分支状态
 
