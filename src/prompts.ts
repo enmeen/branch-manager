@@ -411,3 +411,69 @@ export async function promptForDeleteGitBranch(): Promise<boolean> {
 
   return confirmed;
 }
+
+// ============ Worktree 相关提示 ============
+
+/**
+ * 提示输入 worktree 分支名
+ */
+export async function promptForWorktreeBranch(): Promise<string> {
+  const { branchName } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'branchName',
+      message: '输入 worktree 分支名 (如 feat/xxx):',
+      validate: (input: string) => {
+        if (!input || input.trim().length === 0) {
+          return '分支名不能为空';
+        }
+        return true;
+      }
+    }
+  ]);
+
+  return branchName.trim();
+}
+
+/**
+ * 选择已有 worktree 分支
+ */
+export async function promptForWorktreeBranchSelect(
+  branches: Array<{ branch: string; path: string }>,
+  message: string
+): Promise<string> {
+  const { branch } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'branch',
+      message,
+      choices: branches.map(item => ({
+        name: `${item.branch} (${item.path})`,
+        value: item.branch
+      }))
+    }
+  ]);
+
+  return branch;
+}
+
+/**
+ * 选择要移除的 worktree 路径
+ */
+export async function promptForWorktreePathSelect(
+  items: Array<{ path: string; branch: string; isCurrent: boolean }>
+): Promise<string> {
+  const { targetPath } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'targetPath',
+      message: '选择要移除的 worktree:',
+      choices: items.map(item => ({
+        name: `${item.path} (${item.branch}${item.isCurrent ? '，当前目录' : ''})`,
+        value: item.path
+      }))
+    }
+  ]);
+
+  return targetPath;
+}

@@ -14,6 +14,11 @@ import {
   pruneWorktree,
   removeWorktree,
 } from '../git';
+import {
+  promptForWorktreeBranch,
+  promptForWorktreeBranchSelect,
+  promptForWorktreePathSelect,
+} from '../prompts';
 import { outputError, outputSuccess } from '../utils/json';
 import type {
   JsonOptions,
@@ -92,10 +97,19 @@ function resolveDefaultWorktreeBaseDir(repoRoot: string, json?: boolean): string
 }
 
 export async function wtAdd(options: WtAddOptions = {}): Promise<void> {
-  const { json, branch, base, path: pathOpt } = options;
+  const { json, base, path: pathOpt } = options;
+  let { branch } = options;
 
   if (!isInGitRepository()) {
     return fail(json, '当前目录不是 git 仓库', 'NOT_GIT_REPO');
+  }
+
+  if (json && !branch) {
+    return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
+  }
+
+  if (!json && !branch) {
+    branch = await promptForWorktreeBranch();
   }
 
   if (!branch) {
@@ -226,10 +240,31 @@ export async function wtList(options: JsonOptions = {}): Promise<void> {
 }
 
 export async function wtRemove(options: WtRemoveOptions = {}): Promise<void> {
-  const { json, path: pathOpt, force } = options;
+  const { json, force } = options;
+  let { path: pathOpt } = options;
 
   if (!isInGitRepository()) {
     return fail(json, '当前目录不是 git 仓库', 'NOT_GIT_REPO');
+  }
+
+  if (json && !pathOpt) {
+    return fail(json, '请提供 --path <dir>', 'MISSING_PATH');
+  }
+
+  const allWorktrees = listWorktrees();
+
+  if (!json && !pathOpt) {
+    if (allWorktrees.length === 0) {
+      return fail(false, '当前仓库没有可移除的 worktree', 'WORKTREE_NOT_FOUND');
+    }
+    const selected = await promptForWorktreePathSelect(
+      allWorktrees.map(item => ({
+        path: path.resolve(item.path),
+        branch: item.branch,
+        isCurrent: item.isCurrent,
+      }))
+    );
+    pathOpt = selected;
   }
 
   if (!pathOpt) {
@@ -237,7 +272,6 @@ export async function wtRemove(options: WtRemoveOptions = {}): Promise<void> {
   }
 
   const targetPath = path.resolve(process.cwd(), pathOpt);
-  const allWorktrees = listWorktrees();
   const match = allWorktrees.find(item => path.resolve(item.path) === targetPath);
 
   if (!match) {
@@ -304,17 +338,34 @@ export async function wtPrune(options: JsonOptions = {}): Promise<void> {
 }
 
 export async function wtOpen(options: WtOpenOptions = {}): Promise<void> {
-  const { json, branch } = options;
+  const { json } = options;
+  let { branch } = options;
 
   if (!isInGitRepository()) {
     return fail(json, '当前目录不是 git 仓库', 'NOT_GIT_REPO');
+  }
+
+  if (json && !branch) {
+    return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
+  }
+
+  const worktrees = listWorktrees();
+  const selectableBranches = worktrees
+    .filter(item => item.branch !== '(detached)')
+    .map(item => ({ branch: item.branch, path: path.resolve(item.path) }));
+
+  if (!json && !branch) {
+    if (selectableBranches.length === 0) {
+      return fail(false, '当前仓库没有可用的 worktree 分支', 'WORKTREE_NOT_FOUND');
+    }
+    branch = await promptForWorktreeBranchSelect(selectableBranches, '选择要打开路径的 worktree 分支:');
   }
 
   if (!branch) {
     return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
   }
 
-  const found = listWorktrees().find(item => item.branch === branch);
+  const found = worktrees.find(item => item.branch === branch);
   if (!found) {
     return fail(
       json,
@@ -339,17 +390,34 @@ export async function wtOpen(options: WtOpenOptions = {}): Promise<void> {
 }
 
 export async function wtSwitch(options: WtSwitchOptions = {}): Promise<void> {
-  const { json, branch } = options;
+  const { json } = options;
+  let { branch } = options;
 
   if (!isInGitRepository()) {
     return fail(json, '当前目录不是 git 仓库', 'NOT_GIT_REPO');
+  }
+
+  if (json && !branch) {
+    return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
+  }
+
+  const worktrees = listWorktrees();
+  const selectableBranches = worktrees
+    .filter(item => item.branch !== '(detached)')
+    .map(item => ({ branch: item.branch, path: path.resolve(item.path) }));
+
+  if (!json && !branch) {
+    if (selectableBranches.length === 0) {
+      return fail(false, '当前仓库没有可切换的 worktree 分支', 'WORKTREE_NOT_FOUND');
+    }
+    branch = await promptForWorktreeBranchSelect(selectableBranches, '选择要切换的 worktree 分支:');
   }
 
   if (!branch) {
     return fail(json, '请提供 --branch <name>', 'MISSING_BRANCH');
   }
 
-  const found = listWorktrees().find(item => item.branch === branch);
+  const found = worktrees.find(item => item.branch === branch);
   if (!found) {
     return fail(
       json,
