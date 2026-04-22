@@ -39,6 +39,7 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
 
   // 3. 获取当前仓库的所有 features
   const features = storage.state.getFeatures(repoKey);
+  const currentBranch = getCurrentBranch();
 
   if (features.length === 0) {
     const errorMsg = '当前仓库没有被 bm 管理的需求分支';
@@ -73,7 +74,8 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
 
   // 5. 选择要移除的分支
   const branchToRemove = await promptForRemoveBranch(
-    features.map(f => ({ branch: f.branch, status: f.status }))
+    features.map(f => ({ branch: f.branch, status: f.status })),
+    currentBranch
   );
 
   // 6. 获取该分支的详细信息
@@ -84,7 +86,6 @@ export async function remove(storage: Storage, options: RemoveOptions = {}): Pro
   }
 
   // 7. 检查是否在当前分支上（在显示信息前检查，提升用户体验）
-  const currentBranch = getCurrentBranch();
   if (currentBranch === branchToRemove) {
     console.error(chalk.red(`\n错误: 当前正在分支 "${branchToRemove}" 上`));
     console.log(chalk.yellow('提示: 请先切换到其他分支后再移除'));

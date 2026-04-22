@@ -52,6 +52,7 @@ interface WtOpenOptions extends JsonOptions {
 
 interface WtSwitchOptions extends JsonOptions {
   branch?: string;
+  verbosePath?: boolean;
 }
 
 function fail(json: boolean | undefined, message: string, code: string, hint?: string): never {
@@ -443,8 +444,8 @@ export async function wtOpen(options: WtOpenOptions = {}): Promise<void> {
   console.log(absPath);
 }
 
-export async function wtSwitch(options: WtSwitchOptions = {}): Promise<void> {
-  const { json } = options;
+export async function wtSwitch(storage: Storage, options: WtSwitchOptions = {}): Promise<void> {
+  const { json, verbosePath } = options;
   let { branch } = options;
 
   if (!isInGitRepository()) {
@@ -456,15 +457,40 @@ export async function wtSwitch(options: WtSwitchOptions = {}): Promise<void> {
   }
 
   const worktrees = listWorktrees();
+  const repoKey = getRepoKey();
+  const features = storage.state.getFeatures(repoKey);
+  const featureMap = new Map(features.map(item => [item.branch, item]));
   const selectableBranches = worktrees
     .filter(item => item.branch !== '(detached)')
-    .map(item => ({ branch: item.branch, path: path.resolve(item.path) }));
+    .map(item => {
+      const feature = featureMap.get(item.branch);
+      const absPath = path.resolve(item.path);
+      const isEnv = absPath.includes(`${path.sep}.env${path.sep}`);
+      return {
+        branch: item.branch,
+        path: absPath,
+        status: feature?.status,
+        doc: feature?.doc,
+        isCurrent: item.isCurrent,
+        isEnv,
+        managed: !!feature,
+      };
+    })
+    .sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      if (a.isEnv !== b.isEnv) return a.isEnv ? 1 : -1;
+      return a.branch.localeCompare(b.branch);
+    });
 
   if (!json && !branch) {
     if (selectableBranches.length === 0) {
       return fail(false, '当前仓库没有可切换的 worktree 分支', 'WORKTREE_NOT_FOUND');
     }
-    branch = await promptForWorktreeBranchSelect(selectableBranches, '选择要切换的 worktree 分支:');
+    branch = await promptForWorktreeBranchSelect(
+      selectableBranches,
+      '选择要切换的 worktree 分支:',
+      { verbosePath }
+    );
   }
 
   if (!branch) {

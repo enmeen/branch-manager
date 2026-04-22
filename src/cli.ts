@@ -95,8 +95,9 @@ async function main() {
     .command('switch')
     .description('快速切换到指定分支的 worktree 目录')
     .option('--branch <name>', '分支名')
+    .option('--verbose-path', '交互列表显示完整路径（默认不显示路径）')
     .action(async (options) => {
-      await wtSwitch({ ...jsonOption, ...options });
+      await wtSwitch(storage, { ...jsonOption, ...options });
     });
 
   program.parse();

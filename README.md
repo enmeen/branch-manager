@@ -142,6 +142,7 @@ bmw switch --branch feature/a
 说明：
 - `bmw switch` 是 v4 标准入口。
 - 不传 `--branch` 时会交互选择。
+- 交互列表默认不显示路径，仅展示状态/doc/env 标签；可用 `--verbose-path` 显示完整路径。
 - 会在目标目录启动子 shell，`exit` 返回上一层 shell。
 环境 worktree 路径（自动管理）：
 - `~/.bm/workTree/<repoKey>/.env/<env-branch>`
@@ -244,6 +245,7 @@ bmw switch --branch feature/a
 
 技术方案：
 - 优先根据 `--branch` 精确匹配 worktree；无参数时走交互选择。
+- 交互模式默认展示分组与摘要信息（需求/环境、状态、文档短标识），路径按需显示。
 - 通过启动 `cwd` 为目标路径的子 shell 实现“切目录”，避免直接修改父 shell 状态。
 
 ## JSON 模式（AI/自动化）

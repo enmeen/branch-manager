@@ -1,4 +1,6 @@
 import inquirer from 'inquirer';
+import os from 'os';
+import path from 'path';
 import chalk from 'chalk';
 import type { Env, FeatureStatus } from './types';
 import { ENV_LABELS } from './types';
@@ -384,9 +386,14 @@ export async function promptForOverwriteFeature(): Promise<boolean> {
 /**
  * 提示选择要移除的分支
  */
-export async function promptForRemoveBranch(features: Array<{ branch: string, status: string }>): Promise<string> {
+export async function promptForRemoveBranch(
+  features: Array<{ branch: string, status: string }>,
+  currentBranch?: string
+): Promise<string> {
   const choices = features.map(f => ({
-    name: `${f.branch} (${f.status})`,
+    name: f.branch === currentBranch
+      ? `${chalk.green.bold(f.branch)} (${f.status}) [当前]`
+      : `${f.branch} (${f.status})`,
     value: f.branch
   }));
 
@@ -461,18 +468,80 @@ export async function promptForWorktreeBranch(): Promise<string> {
  * 选择已有 worktree 分支
  */
 export async function promptForWorktreeBranchSelect(
-  branches: Array<{ branch: string; path: string }>,
-  message: string
+  branches: Array<{
+    branch: string;
+    path: string;
+    status?: string;
+    doc?: string;
+    isCurrent?: boolean;
+    isEnv?: boolean;
+    managed?: boolean;
+  }>,
+  message: string,
+  options: { verbosePath?: boolean } = {}
 ): Promise<string> {
+  const { verbosePath = false } = options;
+  const homeDir = os.homedir();
+
+  const shortDocLabel = (doc?: string): string => {
+    if (!doc || !doc.trim()) return '';
+    try {
+      const url = new URL(doc);
+      const host = url.hostname.replace(/^www\./, '');
+      const key = url.pathname.split('/').filter(Boolean).pop() || '';
+      const shortKey = key.length > 12 ? `${key.slice(0, 12)}…` : key;
+      return shortKey ? `${host}#${shortKey}` : host;
+    } catch {
+      return doc.length > 18 ? `${doc.slice(0, 18)}…` : doc;
+    }
+  };
+
+  const toChoiceName = (item: {
+    branch: string;
+    path: string;
+    status?: string;
+    doc?: string;
+    isCurrent?: boolean;
+    isEnv?: boolean;
+    managed?: boolean;
+  }): string => {
+    const tags: string[] = [];
+    if (item.isCurrent) tags.push(chalk.green('当前'));
+    if (item.isEnv) tags.push('env');
+    if (item.status) tags.push(item.status);
+    if (item.doc) tags.push(`doc:${shortDocLabel(item.doc)}`);
+    const managedTag = item.managed ? 'bm' : 'unmanaged';
+    const branchLabel = item.isCurrent ? chalk.green.bold(item.branch) : item.branch;
+    const tagsText = tags.length > 0
+      ? ` [${managedTag}] [${tags.join('] [')}]`
+      : ` [${managedTag}]`;
+    if (!verbosePath) return `${branchLabel}${tagsText}`;
+    const normalized = path.resolve(item.path);
+    const displayPath = normalized.startsWith(homeDir)
+      ? `~${normalized.slice(homeDir.length)}`
+      : normalized;
+    return `${branchLabel}${tagsText} (${displayPath})`;
+  };
+
+  const featureItems = branches.filter(item => !item.isEnv);
+  const envItems = branches.filter(item => item.isEnv);
+  const choices: Array<{ name: string; value: string } | inquirer.Separator> = [];
+
+  if (featureItems.length > 0) {
+    choices.push(new inquirer.Separator('--- 需求分支 ---'));
+    choices.push(...featureItems.map(item => ({ name: toChoiceName(item), value: item.branch })));
+  }
+  if (envItems.length > 0) {
+    choices.push(new inquirer.Separator('--- 环境分支 ---'));
+    choices.push(...envItems.map(item => ({ name: toChoiceName(item), value: item.branch })));
+  }
+
   const { branch } = await inquirer.prompt([
     {
       type: 'list',
       name: 'branch',
       message,
-      choices: branches.map(item => ({
-        name: `${item.branch} (${item.path})`,
-        value: item.branch
-      }))
+      choices
     }
   ]);
 
