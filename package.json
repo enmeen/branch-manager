@@ -1,6 +1,6 @@
 {
   "name": "@enmeen/branch-manager",
-  "version": "3.0.0-alpha.0",
+  "version": "4.0.0",
   "description": "标准化并自动化需求分支管理、环境发布与状态追踪的 CLI 工具",
   "bin": {
     "bmw": "./dist/cli.js"
@@ -40,6 +40,11 @@
     "README.md",
     "LICENSE"
   ],
+  "pnpm": {
+    "overrides": {
+      "lodash": ">=4.17.21"
+    }
+  },
   "dependencies": {
     "chalk": "^4.1.2",
     "commander": "^11.1.0",

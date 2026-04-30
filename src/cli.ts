@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { Command } from 'commander';
 import { Storage } from './storage';
 import { setConfig } from './commands/set';
@@ -8,6 +10,8 @@ import { deploy } from './commands/deploy';
 import { info } from './commands/info';
 import { wtSwitch } from './commands/wt';
 import { JsonOptions } from './types';
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
 
 const program = new Command();
 const storage = new Storage();
@@ -30,7 +34,7 @@ async function main() {
   program
     .name('bmw')
     .description('Branch Manager - 标准化并自动化需求分支管理、环境发布与状态追踪')
-    .version('3.0.0-alpha.0')
+    .version(pkg.version)
     .option('--json', '以 JSON 格式输出（用于 AI/Skill 调用）')
     .hook('preAction', (thisCommand) => {
       const options = thisCommand.opts();
